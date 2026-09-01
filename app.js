@@ -5,7 +5,7 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.2';
+const APP_VERSION = '0.3';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -292,6 +292,9 @@ function renderConfig() {
     <div class="actions col"><button class="secondary" data-action="export">Exportar copia (JSON)</button>
     <button class="secondary" data-action="import">Importar copia…</button></div></section>
     <p class="note">Horario Espiritual · versión ${APP_VERSION}</p>`;
+  const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (!standalone) html += `<section class="card"><div class="card-label">Instalar en el iPhone</div>
+    <p>En Safari, toca <b>Compartir</b> y luego <b>«Añadir a pantalla de inicio»</b>. La app se abrirá a pantalla completa y funcionará sin conexión.</p></section>`;
   return html;
 }
 
