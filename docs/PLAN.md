@@ -53,7 +53,7 @@ Read this file first when resuming. Update the **Status** checklist after each s
 | Confirmations | In-app bottom sheet (`confirmSheet()` → Promise). Native `confirm()` was silently failing in the iOS home-screen app (delete button "did nothing"). |
 | Examen per month | Each month snapshot keeps the examen that was live then; Mes shows it (card in portrait, a line under the title in rotated mode). Editing the text in Configuración applies to the template and the current month only. A history list in Configuración was built in v0.4 and removed in v0.4.1 at Alfredo's request ("didn't need it there"). |
 | Horizontal month view | iOS web apps cannot lock orientation and portrait lock is common, so Mes has a "Girar" toggle: `.app.rotated` rotates the whole frame 90° via CSS transform (`width:100dvh; height:100dvw`), the grid becomes `table-layout: fixed; width:100%` so all 31 days fit. Session-only (`ui.rotated`), applies only while on Mes. Real device landscape also works when the lock is off. |
-| Updates | `sw.js` `CACHE` is bumped per deploy. When a new SW activates over an existing one, app.js shows a persistent toast "Hay una versión nueva · toca para actualizar" that reloads. |
+| Updates | Same-origin files are **network-first with revalidation** (`cache: 'no-cache'`, 4 s timeout → cache fallback), so any real launch with connectivity shows the latest deploy; offline still works. `sw.js` `VERSION` (= `APP_VERSION`) is bumped per deploy; on activate the SW posts `sw-activated` and the page shows a toast only if that version differs from the running one. Configuración has "Buscar actualizaciones" (`reg.update()` + reload). iOS often *resumes* a suspended home-screen app instead of reloading it, so the manual path is: swipe the app away and reopen. GitHub Pages serves with `max-age=600`, hence the revalidation. |
 | Motion | Enter animations only on navigation (tab/day/month/rotate: fade-up with stagger or slide). The touched element gets a `pop` (checkbox spring + drawn check, score chip, grid cell flash). Progress bar animates width between renders. Tab indicator springs. Sheet slides up. All gated behind `prefers-reduced-motion: no-preference`. |
 
 ## 4. Data model (`localStorage['he.v1']`)
@@ -98,6 +98,8 @@ is possible later.
   monthly puntos must be checked on the actual day (he wants to see *when* in the month view);
   rename Resoluciones → tab "Configuración", screen "Puntos del horario espiritual"; drop the
   score words. All applied in v0.2.
+- 2026-09-02 (later): update toast never showed on the phone (old version had no toast code; iOS
+  resumes the app instead of reloading) → network-first SW + manual update button (v0.4.2).
 - 2026-09-02 (later): the examen history list in Configuración was not wanted; seeing the month's
   examen in Mes is enough → removed (v0.4.1).
 - 2026-09-02 (after installing on the phone): delete button did nothing (native confirm in iOS

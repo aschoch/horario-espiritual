@@ -5,7 +5,7 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -297,7 +297,10 @@ function renderConfig() {
     <p class="hint">Haz una copia de vez en cuando: si borras la app de la pantalla de inicio, sus datos se borran con ella.</p>
     <div class="actions col"><button class="secondary" data-action="export">Exportar copia (JSON)</button>
     <button class="secondary" data-action="import">Importar copia…</button></div></section>
-    <p class="note">Horario Espiritual · versión ${APP_VERSION}</p>`;
+    <section class="card"><div class="card-label">Versión</div>
+    <p>Horario Espiritual · versión ${APP_VERSION}</p>
+    <p class="hint">Al abrir la app con conexión se carga siempre la última versión. Si tienes dudas, fuérzalo aquí.</p>
+    <div class="actions col"><button class="secondary" data-action="update">Buscar actualizaciones</button></div></section>`;
   const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
   if (!standalone) html += `<section class="card"><div class="card-label">Instalar en el iPhone</div>
     <p>En Safari, toca <b>Compartir</b> y luego <b>«Añadir a pantalla de inicio»</b>. La app se abrirá a pantalla completa y funcionará sin conexión.</p></section>`;
@@ -388,6 +391,7 @@ $('#view').addEventListener('click', e => {
     case 'goto': ui.tab = el.dataset.tab; ui.anim = 'fade'; break;
     case 'pdf': toast('La exportación a PDF llega en el siguiente paso.'); return;
     case 'export': exportBackup(); return;
+    case 'update': checkForUpdates(); return;
     case 'import': $('#file-import').click(); return;
     default: return;
   }
@@ -430,15 +434,18 @@ document.addEventListener('visibilitychange', () => {
 // ===== boot =====
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 render();
-// Service worker: offline shell + "new version" toast (the new SW activates immediately; a reload shows it).
+// Service worker: offline shell. Files are network-first, so a fresh launch already shows the latest
+// deploy; the toast only appears if the SW that just activated is newer than the page that is running.
+async function checkForUpdates() {
+  toast('Buscando actualizaciones…');
+  try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch (e) { /* offline */ }
+  setTimeout(() => location.reload(), 400);
+}
 if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
-  const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('sw.js').then(reg => reg.addEventListener('updatefound', () => {
-    const nw = reg.installing; if (!nw) return;
-    nw.addEventListener('statechange', () => {
-      if (nw.state !== 'activated' || !hadController) return;
-      const t = $('#toast'); clearTimeout(toast.timer);
-      t.textContent = 'Hay una versión nueva · toca para actualizar'; t.hidden = false; t.onclick = () => location.reload();
-    });
-  })).catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.type !== 'sw-activated' || e.data.version === APP_VERSION) return;
+    const t = $('#toast'); clearTimeout(toast.timer);
+    t.textContent = `Versión ${e.data.version} disponible · toca para actualizar`; t.hidden = false; t.onclick = () => location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
