@@ -5,7 +5,7 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.7';
+const APP_VERSION = '0.7.1';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -430,7 +430,7 @@ function renderConfig() {
   }
   html += `<p class="note">Los cambios se aplican al mes actual y a los siguientes; los meses anteriores no cambian. Si eliminas un punto que ya tiene marcas este mes, se conserva en este mes y desaparece a partir del próximo.</p>`;
   html += `<section class="card"><div class="card-label">Tu nombre</div>
-    <input id="name" class="field" value="${esc(state.settings.name || '')}" placeholder="Ej.: Alfredo Schoch" autocomplete="name">
+    <input id="name" class="field" value="${esc(state.settings.name || '')}" placeholder="Ej.: Josef Engling" autocomplete="name">
     <div class="hint">Aparece en el título del PDF y en el nombre del archivo.</div></section>`;
   const kb = ((localStorage.getItem(STORAGE_KEY) || '').length / 1024).toFixed(1);
   const months = Object.keys(state.months).length;
