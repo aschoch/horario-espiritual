@@ -5,7 +5,7 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.4.2';
+const APP_VERSION = '0.5';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -156,7 +156,7 @@ function upToDate(r, d) {
 }
 // ===== rendering =====
 const ui = { tab: 'hoy', day: today(), month: { y: today().getFullYear(), m0: today().getMonth() }, editing: null,
-  rotated: false, anim: 'fade', lastPct: 0 };
+  rotated: false, anim: 'fade', lastPct: 0, completeKey: null };
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtAvg = n => n.toFixed(1).replace('.', ',');
@@ -189,8 +189,10 @@ function renderHoy() {
   }
   if (res.length) {
     const done = res.filter(r => upToDate(r, d)).length, pct = Math.round(100 * done / res.length);
+    const complete = done === res.length, settle = complete && ui.completeKey !== dk;
+    ui.completeKey = complete ? dk : null;
     html += `<div class="progress"><div class="track"><div class="bar" style="width:${ui.lastPct}%" data-target="${pct}"></div></div>
-      <span class="count">${done} de ${res.length} al día</span>${done === res.length ? '<span class="complete">¡Día completo!</span>' : ''}</div>`;
+      <span class="count">${done} de ${res.length} al día</span>${complete ? `<span class="complete ${settle ? 'settle' : ''}">¡Día completo!</span>` : ''}</div>`;
   }
   for (const f of FREQS) {
     const list = res.filter(r => r.freq === f.id);
@@ -325,20 +327,53 @@ function renderAndPop(sel) {
   const el = document.querySelector(sel);
   if (el) { el.classList.add('pop'); el.addEventListener('animationend', () => el.classList.remove('pop'), { once: true }); }
 }
-function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, 2600);
+function toast(msg, { sticky = false, onTap = null } = {}) {
+  const t = $('#toast'); clearTimeout(toast.timer);
+  t.textContent = msg; t.hidden = false; t.onclick = () => { hideToast(); if (onTap) onTap(); };
+  requestAnimationFrame(() => t.classList.add('show'));
+  if (!sticky) toast.timer = setTimeout(hideToast, 3500);
+}
+function hideToast() {
+  const t = $('#toast'); clearTimeout(toast.timer); t.classList.remove('show');
+  toast.timer = setTimeout(() => { t.hidden = true; }, 240);
 }
 /** In-app confirmation (bottom sheet). Native confirm() is unreliable in iOS home-screen apps. */
+let sheetDone = null;
 function confirmSheet(msg, { ok = 'Aceptar', danger = false } = {}) {
   return new Promise(resolve => {
     const sh = $('#sheet'), okBtn = $('#sheet-ok');
     $('#sheet-msg').textContent = msg; okBtn.textContent = ok; okBtn.classList.toggle('danger', danger);
-    sh.hidden = false; requestAnimationFrame(() => sh.classList.add('open'));
-    const done = v => { sh.classList.remove('open'); sh.onclick = null; setTimeout(() => { sh.hidden = true; }, 260); resolve(v); };
-    sh.onclick = e => { const b = e.target.closest('[data-sheet]'); if (b) done(b.dataset.sheet === 'ok'); };
+    sh.hidden = false; sh.classList.remove('closing'); requestAnimationFrame(() => sh.classList.add('open'));
+    sheetDone = v => { sheetDone = null; sh.classList.add('closing'); sh.classList.remove('open'); sh.onclick = null;
+      setTimeout(() => { sh.hidden = true; sh.classList.remove('closing'); }, 300); resolve(v); };
+    sh.onclick = e => { const b = e.target.closest('[data-sheet]'); if (b && sheetDone) sheetDone(b.dataset.sheet === 'ok'); };
   });
 }
+/** Drag the sheet down to dismiss (momentum + damping when pulling up), like a native iOS sheet. */
+(function initSheetDrag() {
+  const sh = $('#sheet'), panel = $('.sheet-panel', sh), backdrop = $('.sheet-backdrop', sh);
+  let active = false, startY = 0, lastY = 0, lastT = 0, vel = 0;
+  panel.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    active = true; startY = lastY = e.clientY; lastT = performance.now(); vel = 0;
+    panel.classList.add('dragging'); try { panel.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+  });
+  panel.addEventListener('pointermove', e => {
+    if (!active) return;
+    const t = performance.now(), dy = e.clientY - startY;
+    vel = (e.clientY - lastY) / Math.max(1, t - lastT); lastY = e.clientY; lastT = t;
+    const y = dy > 0 ? dy : -Math.pow(-dy, 0.6);              // damping when pulling up
+    panel.style.transform = `translateY(${y}px)`;
+    backdrop.style.opacity = dy > 0 ? String(Math.max(0, 1 - dy / panel.offsetHeight)) : '';
+  });
+  const end = () => {
+    if (!active) return; active = false; panel.classList.remove('dragging');
+    const dy = lastY - startY, close = dy > panel.offsetHeight * 0.35 || vel > 0.6;
+    panel.style.transform = ''; backdrop.style.opacity = '';
+    if (close && sheetDone) sheetDone(false);
+  };
+  panel.addEventListener('pointerup', end); panel.addEventListener('pointercancel', end);
+})();
 
 // ===== backup =====
 async function exportBackup() {
@@ -444,8 +479,7 @@ async function checkForUpdates() {
 if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
   navigator.serviceWorker.addEventListener('message', e => {
     if (!e.data || e.data.type !== 'sw-activated' || e.data.version === APP_VERSION) return;
-    const t = $('#toast'); clearTimeout(toast.timer);
-    t.textContent = `Versión ${e.data.version} disponible · toca para actualizar`; t.hidden = false; t.onclick = () => location.reload();
+    toast(`Versión ${e.data.version} disponible · toca para actualizar`, { sticky: true, onTap: () => location.reload() });
   });
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

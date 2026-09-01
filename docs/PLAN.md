@@ -92,12 +92,29 @@ is possible later.
   with inline edit, ↑↓ reorder, × delete, add form each; note on month semantics; Datos card
   (export/import JSON backup); version line.
 
+## 5a. Motion principles (v0.5, from Emil Kowalski — emilkowal.ski, animations.dev)
+
+Alfredo pointed to these as his taste reference. Rules applied, keep following them:
+- Stay under 300 ms; 180–250 ms usually beats 400 ms. Enter/slide 220 ms, pops 200–220 ms, progress 350 ms.
+- Ease-out (`--ease-out`) for anything entering or exiting. The sheet uses the iOS curve
+  `cubic-bezier(.32,.72,0,1)` (`--ease-ios`), 420 ms in / 280 ms out, with drag-to-dismiss:
+  momentum (velocity > 0.6 px/ms) or 35 % of height closes; pulling up is damped (`dy^0.6`).
+- Frequency rule: the more often an interaction happens, the less it animates. Checking a punto
+  (≈16×/day) only gets a 0.9 press-scale on the box and a 220 ms pop; tab buttons don't scale at all.
+- Never animate from scale(0); enters use translateY(8px)+opacity, "settle" starts at scale(.94).
+- Buttons scale to 0.97 on press (100 ms). Use transitions (interruptible) for state that can flip
+  quickly: box colour, toast, sheet. Keyframes only for one-shot flourishes.
+- No infinite animations: "¡Día completo!" settles once, only when the day just became complete.
+- Toast: transition-based slide/fade, 3.5 s auto-dismiss, tap to dismiss; sticky variant for updates.
+- Everything is behind `prefers-reduced-motion: no-preference`.
+
 ## 5b. Feedback log
 
 - 2026-09-01 (after first slice): fill happens at night → 6am rollover + explicit date; weekly and
   monthly puntos must be checked on the actual day (he wants to see *when* in the month view);
   rename Resoluciones → tab "Configuración", screen "Puntos del horario espiritual"; drop the
   score words. All applied in v0.2.
+- 2026-09-02 (later): asked to draw delight ideas from emilkowal.ski and animations.dev → §5a, v0.5.
 - 2026-09-02 (later): update toast never showed on the phone (old version had no toast code; iOS
   resumes the app instead of reloading) → network-first SW + manual update button (v0.4.2).
 - 2026-09-02 (later): the examen history list in Configuración was not wanted; seeing the month's
@@ -123,6 +140,9 @@ is possible later.
 - [ ] Step 5 — PDF export (jsPDF, share sheet, A4 landscape). Button currently shows a toast.
 - [x] Step 10 (v0.4, 2026-09-02) — bottom-sheet confirmations, examen particular history, rotated
       month view, motion/delight pass. See Decisions.
+- [x] Step 11 (v0.5, 2026-09-02) — motion pass 2 following Emil Kowalski's principles (§5a): shorter
+      ease-out timings, iOS sheet curve + drag-to-dismiss with grabber, transition-based toast,
+      one-shot completion settle, frequency-aware feedback.
 - [x] Step 6 — Backup export/import + Ajustes (basic version done; polish in step 7).
 - [x] Step 7 — PWA: `manifest.webmanifest`, icons (`scripts/make_icons.py`), `sw.js` (stale-while-
       revalidate shell, cdnjs runtime cache; bump `CACHE` on deploy), iOS meta tags, install hint
