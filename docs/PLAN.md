@@ -39,10 +39,11 @@ Read this file first when resuming. Update the **Status** checklist after each s
 | Language | Spanish UI only (domain terms are Spanish). Strings live inline; no i18n layer. |
 | Storage | `localStorage` key `he.v1`, one JSON document (see §4). Data never leaves the phone. `navigator.storage.persist()` requested at boot. Backup = JSON export via share sheet. |
 | Month snapshots | Each month gets its own frozen copy of the resolution list + examen text, created lazily **only for the current month** the first time it is opened. Past months never opened stay empty (read-only message). |
-| Template edits | Apply to the template AND the current month's snapshot. Past months untouched. Removing a resolution that already has checks this month: removed from template only; it stays in the current month and disappears from next month on. |
+| Template edits | Apply to the template AND the current month's snapshot. Past months untouched. Removing a resolution that already has checks this month: removed from template only; it stays in the current month ("retired") and disappears from next month on. **Re-adding** a punto whose normalized text matches a retired one in the current month revives it (same id, ticks kept); a match in a past month reuses that id so history stays continuous; a match in the active template is refused (toast). State v3 `repairDuplicates()` folds duplicates created before this fix. |
 | Checks | **Every frequency is checked on a specific day**: `checks[id][YYYY-MM-DD] = true`, stored globally (not per month). Weekly/monthly puntos are "up to date" when any day of the current ISO week / month is checked; Hoy shows "Esta semana: hecho el martes 1" or "pendiente". (v1 used period keys; `migrate()` drops them.) |
 | Scores | Global `scores[YYYY-MM-DD] = 1..5`. Tap the selected score again to clear. No word labels under the chips (Alfredo found them awkward). |
 | Day rollover | The logical day changes at **06:00**, not midnight (`today()` in app.js), because Alfredo fills the app at night. Hoy shows a "Madrugada" banner between 00:00 and 05:59 and always the full date ("Martes, 1 de septiembre"). Future days blocked relative to the logical day. |
+| Name | `settings.name`, edited in Configuración. PDF title becomes "Horario espiritual de <name> · Mes Año" and the file "Horario espiritual - <name> - Mes Año.pdf". |
 | Naming | Tabs: Hoy · Mes · Configuración. Configuración screen title: "Puntos del horario espiritual"; UI says "punto", code says `resolution`. Data/backup and about live at the bottom of Configuración (no separate settings screen). |
 | Editing the past | Allowed for checks and scores in any month (fixing forgotten days). Future days are disabled. The resolution LIST of a past month is frozen. |
 | Month grid | ONE table: header rows = week spans ("1–6", "7–13"), weekday letters, day numbers; then the examen row and group rows (Diarios / Semanales / Mensuales) with one row per punto. Monday columns get a left border. Totals: daily `n/daysElapsed`, weekly `weeksDone/weeksElapsed` (a week counts if any day of the full ISO week is checked), monthly ✓ or –. The PDF will mirror this table. |
@@ -79,8 +80,8 @@ Read this file first when resuming. Update the **Status** checklist after each s
 }
 ```
 
-`freq` ∈ `daily | weekly | monthly`. Ids are stable across months so history per resolution
-is possible later.
+`freq` ∈ `daily | weekly | monthly`. Ids are stable across months (re-adding a punto with the same
+text reuses its id) so history per resolution is continuous. `settings.name` holds the user's name.
 
 ## 5. Screens
 
@@ -113,6 +114,8 @@ Alfredo pointed to these as his taste reference. Rules applied, keep following t
   monthly puntos must be checked on the actual day (he wants to see *when* in the month view);
   rename Resoluciones → tab "Configuración", screen "Puntos del horario espiritual"; drop the
   score words. All applied in v0.2.
+- 2026-09-02 (later): wants his name in the PDF title and file name; found that deleting a punto
+  with ticks and re-adding it duplicated it → revive-on-re-add + repair migration (v0.7).
 - 2026-09-02 (later): PDF export built from his May 2026 sheet export as reference; he asked to remove
   the progress bar ("15 de 16 al día") from Hoy → removed in v0.6.
 - 2026-09-02 (later): asked to draw delight ideas from emilkowal.ski and animations.dev → §5a, v0.5.

@@ -5,7 +5,7 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.6';
+const APP_VERSION = '0.7';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -64,7 +64,7 @@ function fmtShort(d) { return `${DIAS[weekdayIndex(d)]} ${d.getDate()}`; }
 
 // ===== state & persistence =====
 function defaultState() {
-  return { version: 2, template: { particular: '', resolutions: [] }, months: {}, checks: {}, scores: {}, settings: {} };
+  return { version: 3, template: { particular: '', resolutions: [] }, months: {}, checks: {}, scores: {}, settings: {} };
 }
 function migrate(s) {
   if (!s || typeof s !== 'object') return defaultState();
@@ -76,7 +76,30 @@ function migrate(s) {
       for (const k of Object.keys(s.checks[id])) if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) delete s.checks[id][k];
     s.version = 2;
   }
+  if (s.version < 3) { repairDuplicates(s); s.version = 3; }
   return s;
+}
+const normText = t => String(t || '').trim().toLowerCase().replace(/\s+/g, ' ');
+/** Before v0.7, deleting a punto with ticks and re-adding it produced two rows with the same text in the
+ *  month (old retired id + new id). Fold later duplicates into the first one and re-point the template. */
+function repairDuplicates(s) {
+  const tpl = s.template.resolutions;
+  for (const mk of Object.keys(s.months)) {
+    const m = s.months[mk], seen = new Map();
+    for (const r of [...m.resolutions]) {
+      const k = normText(r.text);
+      if (!seen.has(k)) { seen.set(k, r); continue; }
+      const keep = seen.get(k), drop = r;
+      m.resolutions.splice(m.resolutions.indexOf(drop), 1);
+      if (drop.id === keep.id) continue;
+      const from = s.checks[drop.id] || {}; s.checks[keep.id] = s.checks[keep.id] || {};
+      for (const d of Object.keys(from)) if (from[d]) s.checks[keep.id][d] = true;
+      delete s.checks[drop.id];
+      const t = tpl.find(x => x.id === drop.id);
+      if (t) { if (tpl.some(x => x.id === keep.id)) tpl.splice(tpl.indexOf(t), 1); else t.id = keep.id; }
+      for (const mk2 of Object.keys(s.months)) for (const rr of s.months[mk2].resolutions) if (rr.id === drop.id) rr.id = keep.id;
+    }
+  }
 }
 function load() {
   try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? migrate(JSON.parse(raw)) : defaultState(); }
@@ -103,12 +126,20 @@ function ensureMonth(mk) {
 }
 const currentMonth = () => ensureMonth(monthKey(today()));
 
+/** Adds a punto. If the same text exists retired in this month (deleted after having ticks) it is revived;
+ *  if it existed in a past month its id is reused so history stays continuous. Returns false on a duplicate. */
 function addResolution(freq, text) {
+  const key = normText(text), m = currentMonth();
+  if (state.template.resolutions.some(r => normText(r.text) === key)) return false;
+  const retired = m.resolutions.find(r => normText(r.text) === key);
+  const past = retired ? null : Object.values(state.months).flatMap(mm => mm.resolutions).find(r => normText(r.text) === key);
+  const id = retired ? retired.id : past ? past.id : uid();
   const same = state.template.resolutions.filter(r => r.freq === freq);
-  const r = { id: uid(), text, freq, order: same.length ? Math.max(...same.map(x => x.order)) + 1 : 0, createdAt: dayKey(today()) };
+  const r = { id, text, freq, order: same.length ? Math.max(...same.map(x => x.order)) + 1 : 0, createdAt: dayKey(today()) };
   state.template.resolutions.push(r);
-  currentMonth().resolutions.push(snapshotOf(r));
+  if (retired) { retired.text = text; retired.freq = freq; retired.order = r.order; } else m.resolutions.push(snapshotOf(r));
   save();
+  return true;
 }
 function editResolution(id, text) {
   const t = state.template.resolutions.find(r => r.id === id); if (t) t.text = text;
@@ -281,6 +312,9 @@ function loadJsPdf() {
   });
   return jspdfLoading;
 }
+const userName = () => (state.settings.name || '').trim();
+const pdfTitle = (y, m0) => `Horario espiritual${userName() ? ` de ${userName()}` : ''} · ${cap(MESES[m0])} ${y}`;
+const pdfFileName = (y, m0) => `Horario espiritual${userName() ? ` - ${userName().replace(/[\/\\:*?"<>|]+/g, '')}` : ''} - ${cap(MESES[m0])} ${y}.pdf`;
 /** One A4 landscape page: title, examen line, then the month grid (days across, puntos down). */
 function buildPdf(lib, y, m0, M) {
   const { mk, m, nDays, days, lastDay, weeks, elapsed, groups, scores, avg } = M;
@@ -290,7 +324,7 @@ function buildPdf(lib, y, m0, M) {
   const dateOf = d => new Date(y, m0, d);
   // title
   doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...INK);
-  doc.text(`Horario espiritual · ${cap(MESES[m0])} ${y}`, MG, MG + 5);
+  doc.text(pdfTitle(y, m0), MG, MG + 5);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...MUTED);
   if (m.particular) {
     const extra = avg ? `   ·   media ${fmtAvg(avg)} (${scores.length} ${scores.length === 1 ? 'día' : 'días'})` : '';
@@ -364,10 +398,10 @@ async function exportPdf() {
   let lib;
   try { lib = await loadJsPdf(); } catch (e) { toast('No se pudo cargar el generador de PDF. ¿Sin conexión?'); return; }
   const doc = buildPdf(lib, y, m0, M);
-  const name = `horario-espiritual-${M.mk}.pdf`, blob = doc.output('blob');
+  const name = pdfFileName(y, m0), blob = doc.output('blob');
   const file = new File([blob], name, { type: 'application/pdf' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: `Horario espiritual · ${cap(MESES[m0])} ${y}` }); return; }
+    try { await navigator.share({ files: [file], title: pdfTitle(y, m0) }); return; }
     catch (e) { if (e.name === 'AbortError') return; if (e.name === 'NotAllowedError') { toast('Toca de nuevo para compartir el PDF.'); return; } }
   }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
@@ -395,6 +429,9 @@ function renderConfig() {
     html += `</ul><form class="addrow" data-freq="${f.id}"><input name="text" placeholder="Nuevo punto ${f.one}" autocomplete="off" enterkeyhint="done"><button type="submit">Añadir</button></form></section>`;
   }
   html += `<p class="note">Los cambios se aplican al mes actual y a los siguientes; los meses anteriores no cambian. Si eliminas un punto que ya tiene marcas este mes, se conserva en este mes y desaparece a partir del próximo.</p>`;
+  html += `<section class="card"><div class="card-label">Tu nombre</div>
+    <input id="name" class="field" value="${esc(state.settings.name || '')}" placeholder="Ej.: Alfredo Schoch" autocomplete="name">
+    <div class="hint">Aparece en el título del PDF y en el nombre del archivo.</div></section>`;
   const kb = ((localStorage.getItem(STORAGE_KEY) || '').length / 1024).toFixed(1);
   const months = Object.keys(state.months).length;
   html += `<section class="card"><div class="card-label">Datos</div>
@@ -538,7 +575,8 @@ $('#view').addEventListener('submit', e => {
   const f = e.target.closest('form.addrow'); if (!f) return;
   e.preventDefault();
   const text = f.text.value.trim(); if (!text) return;
-  addResolution(f.dataset.freq, text); render();
+  if (!addResolution(f.dataset.freq, text)) { toast('Ya tienes un punto con ese nombre.'); return; }
+  render();
   const inp = $(`form.addrow[data-freq="${f.dataset.freq}"] input`); if (inp) inp.focus();
 });
 $('#view').addEventListener('keydown', e => {
@@ -552,7 +590,10 @@ $('#view').addEventListener('focusout', e => {
   if (text) editResolution(e.target.dataset.id, text);
   ui.editing = null; render();
 });
-$('#view').addEventListener('input', e => { if (e.target.id === 'particular') setParticular(e.target.value); });
+$('#view').addEventListener('input', e => {
+  if (e.target.id === 'particular') setParticular(e.target.value);
+  if (e.target.id === 'name') { state.settings.name = e.target.value.trim(); save(); }
+});
 document.querySelector('.tabbar').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]'); if (!b || b.dataset.tab === ui.tab) return;
   ui.tab = b.dataset.tab; ui.editing = null; ui.anim = 'fade'; $('#view').scrollTop = 0; render();

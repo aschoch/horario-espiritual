@@ -129,7 +129,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .addrow { display: flex; gap: 8px; margin-top: 10px; }
 .addrow input { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); min-width: 0; }
 .addrow button { border: 0; border-radius: 10px; background: var(--accent); color: #fff; padding: 0 14px; font-weight: 600; }
-textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); resize: vertical; }
+textarea, input.field { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
+textarea { resize: vertical; }
 
 .grid-card { padding-right: 0; padding-left: 0; }
 .gridwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0 0 4px; }
