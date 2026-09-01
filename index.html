@@ -14,18 +14,27 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="topbar">
-  <h1 id="title">Hoy</h1>
-</header>
-<main id="view"></main>
-<nav class="tabbar" aria-label="Secciones">
-  <button data-tab="hoy" class="active">Hoy</button>
-  <button data-tab="mes">Mes</button>
-  <button data-tab="config">Configuración</button>
-</nav>
+<div class="app" id="app">
+  <header class="topbar"><h1 id="title">Hoy</h1></header>
+  <main id="view"></main>
+  <nav class="tabbar" aria-label="Secciones">
+    <button data-tab="hoy" class="active">Hoy</button>
+    <button data-tab="mes">Mes</button>
+    <button data-tab="config">Configuración</button>
+  </nav>
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-sheet="cancel"></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true">
+      <p id="sheet-msg"></p>
+      <div class="sheet-actions">
+        <button class="secondary" data-sheet="cancel">Cancelar</button>
+        <button class="primary" id="sheet-ok" data-sheet="ok">Aceptar</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" role="status" hidden></div>
+</div>
 <input type="file" id="file-import" accept="application/json,.json" hidden>
-<div id="toast" role="status" hidden></div>
 <script src="app.js"></script>
-<script>if ('serviceWorker' in navigator && location.hostname !== 'localhost') navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>

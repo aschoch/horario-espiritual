@@ -1,14 +1,15 @@
 /* Horario Espiritual — app.js
    Vanilla JS, no build step. Sections: constants · date utils · state · domain ops ·
-   rendering (pure functions → HTML strings) · events · boot.  Spec: docs/PLAN.md */
+   rendering (pure functions → HTML strings) · sheet/toast · events · boot.  Spec: docs/PLAN.md */
 'use strict';
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.3';
+const APP_VERSION = '0.4';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const MESES_ABR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 const DIAS_L = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const FREQS = [
@@ -61,6 +62,7 @@ function weeksOfMonth(y, m0) {
 }
 function fmtLong(d) { return `${DIAS[weekdayIndex(d)]}, ${d.getDate()} de ${MESES[d.getMonth()]}`; }
 function fmtShort(d) { return `${DIAS[weekdayIndex(d)]} ${d.getDate()}`; }
+function fmtMonthAbr(mk) { const [y, m] = mk.split('-').map(Number); return `${MESES_ABR[m - 1]} ${y}`; }
 
 // ===== state & persistence =====
 function defaultState() {
@@ -154,9 +156,27 @@ function upToDate(r, d) {
   if (r.freq === 'daily') return isChecked(r.id, dayKey(d));
   return (r.freq === 'weekly' ? doneInWeek(r.id, d) : doneInMonth(r.id, d)).length > 0;
 }
+/** Consecutive runs of the same examen particular across months, newest first, with the average score. */
+function particularHistory() {
+  const periods = [];
+  for (const mk of Object.keys(state.months).sort()) {
+    const text = (state.months[mk].particular || '').trim();
+    if (!text) continue;
+    const last = periods[periods.length - 1];
+    if (last && last.text === text) { last.to = mk; last.months.push(mk); }
+    else periods.push({ text, from: mk, to: mk, months: [mk] });
+  }
+  for (const p of periods) {
+    const vals = Object.keys(state.scores).filter(k => p.months.includes(k.slice(0, 7))).map(k => state.scores[k]);
+    p.avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    p.scored = vals.length;
+  }
+  return periods.reverse();
+}
 
 // ===== rendering =====
-const ui = { tab: 'hoy', day: today(), month: { y: today().getFullYear(), m0: today().getMonth() }, editing: null };
+const ui = { tab: 'hoy', day: today(), month: { y: today().getFullYear(), m0: today().getMonth() }, editing: null,
+  rotated: false, anim: 'fade', lastPct: 0 };
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtAvg = n => n.toFixed(1).replace('.', ',');
@@ -187,7 +207,11 @@ function renderHoy() {
       <div class="scores">${[1, 2, 3, 4, 5].map(v => `<button class="score ${sc === v ? 'on' : ''}" data-action="score" data-v="${v}" aria-pressed="${sc === v}">${v}</button>`).join('')}</div>
       ${sc ? '' : `<div class="hint">Puntúa del 1 al 5 cómo viviste hoy tu propósito.</div>`}</section>`;
   }
-  if (res.length) html += `<div class="progress">${res.filter(r => upToDate(r, d)).length} de ${res.length} al día</div>`;
+  if (res.length) {
+    const done = res.filter(r => upToDate(r, d)).length, pct = Math.round(100 * done / res.length);
+    html += `<div class="progress"><div class="track"><div class="bar" style="width:${ui.lastPct}%" data-target="${pct}"></div></div>
+      <span class="count">${done} de ${res.length} al día</span>${done === res.length ? '<span class="complete">¡Día completo!</span>' : ''}</div>`;
+  }
   for (const f of FREQS) {
     const list = res.filter(r => r.freq === f.id);
     if (!list.length) continue;
@@ -210,7 +234,8 @@ function renderMes() {
   const m = isCurrent ? ensureMonth(mk) : getMonth(mk);
   let html = `<div class="daynav">
     <button class="icon" data-action="month:prev" aria-label="Mes anterior">&#8249;</button>
-    <div class="daynav-title"><div class="big">${cap(MESES[m0])} ${y}</div></div>
+    <div class="daynav-title"><div class="big">${cap(MESES[m0])} ${y}</div>
+      <button class="pill" data-action="rotate">${ui.rotated ? 'Volver a vertical' : 'Girar para ver el mes entero'}</button></div>
     <button class="icon" data-action="month:next" ${isCurrent ? 'disabled' : ''} aria-label="Mes siguiente">&#8250;</button>
   </div>`;
   if (!m) return html + emptyCard('Sin horario este mes', 'No hay puntos registrados para este mes.');
@@ -228,7 +253,7 @@ function renderMes() {
   const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 
   if (m.particular) {
-    html += `<section class="card"><div class="card-label">Examen particular</div>
+    html += `<section class="card hide-rotated"><div class="card-label">Examen particular</div>
       <div class="particular-text">${esc(m.particular)}</div>
       <div class="stat">${avg ? `Media <b>${fmtAvg(avg)}</b> · ${scores.length} ${scores.length === 1 ? 'día puntuado' : 'días puntuados'}` : 'Sin puntuaciones todavía'}</div></section>`;
   }
@@ -238,7 +263,7 @@ function renderMes() {
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
   if (m.particular) {
-    html += `<tr class="examen"><th class="lab">Examen particular</th>` + days.map(d => {
+    html += `<tr class="examen"><th class="lab" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
       const s = getScore(`${mk}-${pad2(d)}`);
       return `<td class="${cls(d)} ${s ? 's' + s : ''}">${d <= lastDay ? (s || '·') : ''}</td>`;
     }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
@@ -255,7 +280,7 @@ function renderMes() {
       const total = g.id === 'daily' ? `${n}/${lastDay}`
         : g.id === 'weekly' ? `${elapsed.filter(w => checkedDaysIn(r.id, dayKey(w.ws), dayKey(w.we)).length).length}/${elapsed.length}`
         : (n ? '✓' : '–');
-      html += `<tr><th class="lab">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
+      html += `<tr><th class="lab" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
     }
   }
   html += `</tbody></table></div></section>`;
@@ -265,9 +290,18 @@ function renderMes() {
 
 function renderConfig() {
   const t = state.template;
+  const hist = particularHistory();
   let html = `<section class="card"><div class="card-label">Examen particular</div>
     <textarea id="particular" rows="2" placeholder="Ej.: Vivir la paciencia en casa">${esc(t.particular)}</textarea>
-    <div class="hint">Tu propósito particular. Lo puntúas cada día del 1 al 5.</div></section>`;
+    <div class="hint">Lo puntúas cada día del 1 al 5. Cámbialo cuando cambies de propósito: se aplica a este mes y a los siguientes; los meses anteriores conservan el suyo.</div>`;
+  if (hist.length) {
+    html += `<details class="history"><summary>Histórico de exámenes particulares (${hist.length})</summary><ul>` + hist.map((p, i) => {
+      const range = p.from === p.to ? fmtMonthAbr(p.from) : `${fmtMonthAbr(p.from)} – ${fmtMonthAbr(p.to)}`;
+      const n = p.months.length, current = i === 0 && p.text === t.particular.trim() && p.to === monthKey(today());
+      return `<li><b>${esc(p.text)}</b>${current ? '<span class="tag">actual</span>' : ''}<small>${range} · ${n} ${n === 1 ? 'mes' : 'meses'}${p.avg ? ` · media ${fmtAvg(p.avg)}` : ''}</small></li>`;
+    }).join('') + `</ul></details>`;
+  }
+  html += `</section>`;
   for (const f of FREQS) {
     const list = sortedRes(t.resolutions.filter(r => r.freq === f.id));
     html += `<section class="card"><div class="card-label">${f.title}</div><ul class="editlist">`;
@@ -301,13 +335,34 @@ function renderConfig() {
 function render() {
   document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === ui.tab));
   $('#title').textContent = TITLES[ui.tab];
-  $('#view').innerHTML = ({ hoy: renderHoy, mes: renderMes, config: renderConfig })[ui.tab]();
+  $('#app').classList.toggle('rotated', ui.tab === 'mes' && ui.rotated);
+  const view = $('#view');
+  view.className = ui.anim ? `anim-${ui.anim}` : '';
+  ui.anim = null;
+  view.innerHTML = ({ hoy: renderHoy, mes: renderMes, config: renderConfig })[ui.tab]();
   if (ui.editing) { const inp = $('.edit-input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+  const bar = $('.progress .bar');
+  if (bar) { const target = +bar.dataset.target; requestAnimationFrame(() => { bar.style.width = target + '%'; }); ui.lastPct = target; }
 }
-
+/** Re-render and briefly animate the element matching `sel` (the thing the user just touched). */
+function renderAndPop(sel) {
+  render();
+  const el = document.querySelector(sel);
+  if (el) { el.classList.add('pop'); el.addEventListener('animationend', () => el.classList.remove('pop'), { once: true }); }
+}
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+/** In-app confirmation (bottom sheet). Native confirm() is unreliable in iOS home-screen apps. */
+function confirmSheet(msg, { ok = 'Aceptar', danger = false } = {}) {
+  return new Promise(resolve => {
+    const sh = $('#sheet'), okBtn = $('#sheet-ok');
+    $('#sheet-msg').textContent = msg; okBtn.textContent = ok; okBtn.classList.toggle('danger', danger);
+    sh.hidden = false; requestAnimationFrame(() => sh.classList.add('open'));
+    const done = v => { sh.classList.remove('open'); sh.onclick = null; setTimeout(() => { sh.hidden = true; }, 260); resolve(v); };
+    sh.onclick = e => { const b = e.target.closest('[data-sheet]'); if (b) done(b.dataset.sheet === 'ok'); };
+  });
 }
 
 // ===== backup =====
@@ -323,40 +378,42 @@ async function exportBackup() {
 }
 function importBackup(file) {
   const rd = new FileReader();
-  rd.onload = () => {
-    try {
-      const s = JSON.parse(rd.result);
-      if (!s || typeof s !== 'object' || !s.template || !s.months) throw new Error('formato');
-      if (!confirm('Importar reemplazará todos los datos actuales. ¿Continuar?')) return;
-      state = migrate(s); save(); render(); toast('Copia importada.');
-    } catch (e) { toast('El archivo no es una copia válida.'); }
+  rd.onload = async () => {
+    let s;
+    try { s = JSON.parse(rd.result); if (!s || typeof s !== 'object' || !s.template || !s.months) throw new Error('formato'); }
+    catch (e) { toast('El archivo no es una copia válida.'); return; }
+    const n = Object.keys(s.months).length;
+    if (!(await confirmSheet(`Importar reemplazará todos los datos actuales por la copia (${n} ${n === 1 ? 'mes' : 'meses'}). ¿Continuar?`, { ok: 'Importar' }))) return;
+    state = migrate(s); save(); ui.anim = 'fade'; render(); toast('Copia importada.');
   };
   rd.readAsText(file);
 }
 
 // ===== events =====
-function removeResolutionUI(id) {
+async function removeResolutionUI(id) {
   const r = state.template.resolutions.find(x => x.id === id); if (!r) return;
   const msg = hasChecksThisMonth(id)
-    ? `«${r.text}» ya tiene marcas este mes. Se quitará de la plantilla: este mes se conserva y desaparece a partir del próximo. ¿Continuar?`
+    ? `«${r.text}» ya tiene marcas este mes. Se quitará de la plantilla: este mes se conserva y desaparece a partir del próximo.`
     : `¿Eliminar «${r.text}»?`;
-  if (confirm(msg)) removeResolution(id);
+  if (await confirmSheet(msg, { ok: 'Eliminar', danger: true })) { removeResolution(id); render(); }
 }
 
 $('#view').addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if (!el || el.disabled) return;
+  const id = el.dataset.id, key = el.dataset.key;
   switch (el.dataset.action) {
-    case 'day:prev': ui.day = addDays(ui.day, -1); break;
-    case 'day:next': if (ui.day < today()) ui.day = addDays(ui.day, 1); break;
-    case 'day:today': ui.day = today(); break;
-    case 'month:prev': { const d = new Date(ui.month.y, ui.month.m0 - 1, 1); ui.month = { y: d.getFullYear(), m0: d.getMonth() }; break; }
-    case 'month:next': { const d = new Date(ui.month.y, ui.month.m0 + 1, 1); if (d <= today()) ui.month = { y: d.getFullYear(), m0: d.getMonth() }; break; }
-    case 'check': toggleCheck(el.dataset.id, el.dataset.key); break;
-    case 'score': { const v = +el.dataset.v, dk = dayKey(ui.day); setScore(dk, getScore(dk) === v ? null : v); break; }
-    case 'edit': ui.editing = el.dataset.id; break;
-    case 'move': moveResolution(el.dataset.id, +el.dataset.dir); break;
-    case 'remove': removeResolutionUI(el.dataset.id); break;
-    case 'goto': ui.tab = el.dataset.tab; break;
+    case 'day:prev': ui.day = addDays(ui.day, -1); ui.anim = 'right'; break;
+    case 'day:next': if (ui.day < today()) { ui.day = addDays(ui.day, 1); ui.anim = 'left'; } break;
+    case 'day:today': ui.day = today(); ui.anim = 'left'; break;
+    case 'month:prev': { const d = new Date(ui.month.y, ui.month.m0 - 1, 1); ui.month = { y: d.getFullYear(), m0: d.getMonth() }; ui.anim = 'right'; break; }
+    case 'month:next': { const d = new Date(ui.month.y, ui.month.m0 + 1, 1); if (d <= today()) { ui.month = { y: d.getFullYear(), m0: d.getMonth() }; ui.anim = 'left'; } break; }
+    case 'rotate': ui.rotated = !ui.rotated; ui.anim = 'fade'; $('#view').scrollTop = 0; break;
+    case 'check': toggleCheck(id, key); renderAndPop(`[data-action="check"][data-id="${id}"][data-key="${key}"]`); return;
+    case 'score': { const v = +el.dataset.v, dk = dayKey(ui.day); setScore(dk, getScore(dk) === v ? null : v); renderAndPop(`[data-action="score"][data-v="${v}"]`); return; }
+    case 'edit': ui.editing = id; break;
+    case 'move': moveResolution(id, +el.dataset.dir); break;
+    case 'remove': removeResolutionUI(id); return;
+    case 'goto': ui.tab = el.dataset.tab; ui.anim = 'fade'; break;
     case 'pdf': toast('La exportación a PDF llega en el siguiente paso.'); return;
     case 'export': exportBackup(); return;
     case 'import': $('#file-import').click(); return;
@@ -384,8 +441,8 @@ $('#view').addEventListener('focusout', e => {
 });
 $('#view').addEventListener('input', e => { if (e.target.id === 'particular') setParticular(e.target.value); });
 document.querySelector('.tabbar').addEventListener('click', e => {
-  const b = e.target.closest('button[data-tab]'); if (!b) return;
-  ui.tab = b.dataset.tab; ui.editing = null; render();
+  const b = e.target.closest('button[data-tab]'); if (!b || b.dataset.tab === ui.tab) return;
+  ui.tab = b.dataset.tab; ui.editing = null; ui.anim = 'fade'; $('#view').scrollTop = 0; render();
 });
 $('#file-import').addEventListener('change', e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ''; });
 
@@ -401,3 +458,15 @@ document.addEventListener('visibilitychange', () => {
 // ===== boot =====
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 render();
+// Service worker: offline shell + "new version" toast (the new SW activates immediately; a reload shows it).
+if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(reg => reg.addEventListener('updatefound', () => {
+    const nw = reg.installing; if (!nw) return;
+    nw.addEventListener('statechange', () => {
+      if (nw.state !== 'activated' || !hadController) return;
+      const t = $('#toast'); clearTimeout(toast.timer);
+      t.textContent = 'Hay una versión nueva · toca para actualizar'; t.hidden = false; t.onclick = () => location.reload();
+    });
+  })).catch(() => {});
+}
