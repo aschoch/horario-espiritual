@@ -1,7 +1,7 @@
 /* Service worker: offline shell. Same-origin files are served stale-while-revalidate (instant load,
    updates land on the next launch). cdnjs libraries (jsPDF) are cached on first use.
    Bump CACHE on every deploy that changes app files. */
-const CACHE = 'he-shell-v0.4';
+const CACHE = 'he-shell-v0.4.1';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 

@@ -5,11 +5,10 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.4';
+const APP_VERSION = '0.4.1';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
-const MESES_ABR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 const DIAS_L = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const FREQS = [
@@ -62,7 +61,6 @@ function weeksOfMonth(y, m0) {
 }
 function fmtLong(d) { return `${DIAS[weekdayIndex(d)]}, ${d.getDate()} de ${MESES[d.getMonth()]}`; }
 function fmtShort(d) { return `${DIAS[weekdayIndex(d)]} ${d.getDate()}`; }
-function fmtMonthAbr(mk) { const [y, m] = mk.split('-').map(Number); return `${MESES_ABR[m - 1]} ${y}`; }
 
 // ===== state & persistence =====
 function defaultState() {
@@ -156,24 +154,6 @@ function upToDate(r, d) {
   if (r.freq === 'daily') return isChecked(r.id, dayKey(d));
   return (r.freq === 'weekly' ? doneInWeek(r.id, d) : doneInMonth(r.id, d)).length > 0;
 }
-/** Consecutive runs of the same examen particular across months, newest first, with the average score. */
-function particularHistory() {
-  const periods = [];
-  for (const mk of Object.keys(state.months).sort()) {
-    const text = (state.months[mk].particular || '').trim();
-    if (!text) continue;
-    const last = periods[periods.length - 1];
-    if (last && last.text === text) { last.to = mk; last.months.push(mk); }
-    else periods.push({ text, from: mk, to: mk, months: [mk] });
-  }
-  for (const p of periods) {
-    const vals = Object.keys(state.scores).filter(k => p.months.includes(k.slice(0, 7))).map(k => state.scores[k]);
-    p.avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-    p.scored = vals.length;
-  }
-  return periods.reverse();
-}
-
 // ===== rendering =====
 const ui = { tab: 'hoy', day: today(), month: { y: today().getFullYear(), m0: today().getMonth() }, editing: null,
   rotated: false, anim: 'fade', lastPct: 0 };
@@ -235,6 +215,7 @@ function renderMes() {
   let html = `<div class="daynav">
     <button class="icon" data-action="month:prev" aria-label="Mes anterior">&#8249;</button>
     <div class="daynav-title"><div class="big">${cap(MESES[m0])} ${y}</div>
+      ${m && m.particular ? `<div class="sub show-rotated">Examen particular: <b>${esc(m.particular)}</b></div>` : ''}
       <button class="pill" data-action="rotate">${ui.rotated ? 'Volver a vertical' : 'Girar para ver el mes entero'}</button></div>
     <button class="icon" data-action="month:next" ${isCurrent ? 'disabled' : ''} aria-label="Mes siguiente">&#8250;</button>
   </div>`;
@@ -290,18 +271,9 @@ function renderMes() {
 
 function renderConfig() {
   const t = state.template;
-  const hist = particularHistory();
   let html = `<section class="card"><div class="card-label">Examen particular</div>
     <textarea id="particular" rows="2" placeholder="Ej.: Vivir la paciencia en casa">${esc(t.particular)}</textarea>
-    <div class="hint">Lo puntúas cada día del 1 al 5. Cámbialo cuando cambies de propósito: se aplica a este mes y a los siguientes; los meses anteriores conservan el suyo.</div>`;
-  if (hist.length) {
-    html += `<details class="history"><summary>Histórico de exámenes particulares (${hist.length})</summary><ul>` + hist.map((p, i) => {
-      const range = p.from === p.to ? fmtMonthAbr(p.from) : `${fmtMonthAbr(p.from)} – ${fmtMonthAbr(p.to)}`;
-      const n = p.months.length, current = i === 0 && p.text === t.particular.trim() && p.to === monthKey(today());
-      return `<li><b>${esc(p.text)}</b>${current ? '<span class="tag">actual</span>' : ''}<small>${range} · ${n} ${n === 1 ? 'mes' : 'meses'}${p.avg ? ` · media ${fmtAvg(p.avg)}` : ''}</small></li>`;
-    }).join('') + `</ul></details>`;
-  }
-  html += `</section>`;
+    <div class="hint">Lo puntúas cada día del 1 al 5. Cámbialo cuando cambies de propósito: se aplica a este mes y a los siguientes. Cada mes conserva el suyo y lo verás al volver a él en la vista Mes.</div></section>`;
   for (const f of FREQS) {
     const list = sortedRes(t.resolutions.filter(r => r.freq === f.id));
     html += `<section class="card"><div class="card-label">${f.title}</div><ul class="editlist">`;

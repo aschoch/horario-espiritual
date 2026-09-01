@@ -51,6 +51,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .app.rotated .daynav { margin: 2px 0 4px; }
 .app.rotated .daynav .big { font-size: 17px; }
 .app.rotated .hide-rotated { display: none; }
+.show-rotated { display: none; }
+.app.rotated .show-rotated { display: block; }
+.daynav .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.daynav .sub b { font-weight: 500; color: var(--text); }
 .app.rotated table.grid { width: 100%; table-layout: fixed; font-size: 11px; }
 .app.rotated table.grid th, .app.rotated table.grid td { height: 26px; min-width: 0; }
 .app.rotated table.grid th.lab { width: 150px; min-width: 0; padding-left: 8px; font-size: 12px; }
@@ -124,17 +128,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .addrow input { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); min-width: 0; }
 .addrow button { border: 0; border-radius: 10px; background: var(--accent); color: #fff; padding: 0 14px; font-weight: 600; }
 textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); resize: vertical; }
-
-details.history { margin-top: 10px; }
-details.history summary { cursor: pointer; color: var(--accent); font-size: 14px; list-style: none; padding: 6px 0; }
-details.history summary::-webkit-details-marker { display: none; }
-details.history summary::before { content: '›'; display: inline-block; margin-right: 8px; transition: transform .2s var(--ease); }
-details.history[open] summary::before { transform: rotate(90deg); }
-.history ul { list-style: none; margin: 4px 0 0; padding: 0; }
-.history li { padding: 9px 0; border-top: 1px solid var(--line); }
-.history li b { font-weight: 500; }
-.history li small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
-.history li .tag { display: inline-block; font-size: 11px; color: var(--on); background: var(--on-bg); border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
 
 .grid-card { padding-right: 0; padding-left: 0; }
 .gridwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0 0 4px; }
