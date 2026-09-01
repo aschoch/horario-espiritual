@@ -5,27 +5,35 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.1';
+const APP_VERSION = '0.2';
+const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 const DIAS_L = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const FREQS = [
-  { id: 'daily', title: 'Diarias', one: 'diaria' },
-  { id: 'weekly', title: 'Semanales', one: 'semanal' },
-  { id: 'monthly', title: 'Mensuales', one: 'mensual' },
+  { id: 'daily', title: 'Diarios', one: 'diario', scope: '' },
+  { id: 'weekly', title: 'Semanales', one: 'semanal', scope: 'Esta semana' },
+  { id: 'monthly', title: 'Mensuales', one: 'mensual', scope: 'Este mes' },
 ];
-const SCORE_LABELS = { 1: 'Mal', 2: 'Flojo', 3: 'Regular', 4: 'Bien', 5: 'Muy bien' };
+const TITLES = { hoy: 'Hoy', mes: 'Mes', config: 'Puntos del horario espiritual' };
 
-// ===== date utils (all local time; weeks start on Monday, ISO numbering) =====
+// ===== date utils (local time; weeks start on Monday, ISO numbering) =====
 const DAY_MS = 86400000;
 const pad2 = n => String(n).padStart(2, '0');
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
-const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-function today() { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+const range = (a, b) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
+const now = () => new Date();
+/** Logical "today": before 06:00 we are still on the previous calendar day. */
+function today() {
+  const n = now(), d = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  return n.getHours() < DAY_ROLLOVER_HOUR ? addDays(d, -1) : d;
+}
+const isLateNight = () => now().getHours() < DAY_ROLLOVER_HOUR;
 function dayKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 function monthKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 function monthKeyOf(y, m0) { return `${y}-${pad2(m0 + 1)}`; }
+function parseDay(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 function sameDay(a, b) { return dayKey(a) === dayKey(b); }
 function daysInMonth(y, m0) { return new Date(y, m0 + 1, 0).getDate(); }
@@ -35,46 +43,39 @@ function startOfWeek(d) {
   return addDays(r, -weekdayIndex(r));
 }
 function isoWeekKey(d) {
-  const monday = startOfWeek(d);
-  const thursday = addDays(monday, 3);
-  const year = thursday.getFullYear();
+  const monday = startOfWeek(d), thursday = addDays(monday, 3), year = thursday.getFullYear();
   const week1Monday = startOfWeek(new Date(year, 0, 4));
-  const week = Math.round((monday - week1Monday) / (7 * DAY_MS)) + 1;
-  return `${year}-W${pad2(week)}`;
+  return `${year}-W${pad2(Math.round((monday - week1Monday) / (7 * DAY_MS)) + 1)}`;
 }
-function periodKey(freq, d) {
-  return freq === 'daily' ? dayKey(d) : freq === 'weekly' ? isoWeekKey(d) : monthKey(d);
-}
-/** ISO weeks intersecting a month, clamped to the month for labelling. */
+/** ISO weeks intersecting a month. start/end are clamped to the month; ws/we are the full week. */
 function weeksOfMonth(y, m0) {
   const first = new Date(y, m0, 1), last = new Date(y, m0, daysInMonth(y, m0));
   const out = [];
   for (let ws = startOfWeek(first); ws <= last; ws = addDays(ws, 7)) {
     const we = addDays(ws, 6);
     const s = ws < first ? first : ws, e = we > last ? last : we;
-    out.push({ key: isoWeekKey(ws), start: s, end: e,
+    out.push({ key: isoWeekKey(ws), ws, we, start: s, end: e,
       label: s.getDate() === e.getDate() ? `${s.getDate()}` : `${s.getDate()}–${e.getDate()}` });
   }
   return out;
 }
 function fmtLong(d) { return `${DIAS[weekdayIndex(d)]}, ${d.getDate()} de ${MESES[d.getMonth()]}`; }
-function weekLabel(d) {
-  const s = startOfWeek(d), e = addDays(s, 6);
-  return s.getMonth() === e.getMonth()
-    ? `del ${s.getDate()} al ${e.getDate()} de ${MESES[e.getMonth()]}`
-    : `del ${s.getDate()} de ${MESES[s.getMonth()]} al ${e.getDate()} de ${MESES[e.getMonth()]}`;
-}
+function fmtShort(d) { return `${DIAS[weekdayIndex(d)]} ${d.getDate()}`; }
 
 // ===== state & persistence =====
 function defaultState() {
-  return { version: 1, template: { particular: '', resolutions: [] }, months: {}, checks: {}, scores: {}, settings: {} };
+  return { version: 2, template: { particular: '', resolutions: [] }, months: {}, checks: {}, scores: {}, settings: {} };
 }
 function migrate(s) {
   if (!s || typeof s !== 'object') return defaultState();
-  s.version = s.version || 1;
   s.template = s.template || {}; s.template.particular = s.template.particular || '';
   s.template.resolutions = Array.isArray(s.template.resolutions) ? s.template.resolutions : [];
   s.months = s.months || {}; s.checks = s.checks || {}; s.scores = s.scores || {}; s.settings = s.settings || {};
+  if ((s.version || 1) < 2) { // v1 stored weekly/monthly checks by period key; now everything is per day
+    for (const id of Object.keys(s.checks))
+      for (const k of Object.keys(s.checks[id])) if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) delete s.checks[id][k];
+    s.version = 2;
+  }
   return s;
 }
 function load() {
@@ -92,7 +93,7 @@ let state = load();
 const sortedRes = list => [...list].sort((a, b) => a.order - b.order);
 const snapshotOf = r => ({ id: r.id, text: r.text, freq: r.freq, order: r.order });
 function getMonth(mk) { return state.months[mk] || null; }
-/** Current month gets a snapshot of the template the first time it is opened. Past months never do. */
+/** The current month gets a snapshot of the template the first time it is opened. Past months never do. */
 function ensureMonth(mk) {
   if (state.months[mk]) return state.months[mk];
   if (mk !== monthKey(today())) return null;
@@ -114,11 +115,14 @@ function editResolution(id, text) {
   const m = currentMonth().resolutions.find(r => r.id === id); if (m) m.text = text;
   save();
 }
-function hasChecksThisMonth(id) {
-  const mk = monthKey(today()), c = state.checks[id] || {};
-  const weekKeys = new Set(weeksOfMonth(today().getFullYear(), today().getMonth()).map(w => w.key));
-  return Object.keys(c).some(k => c[k] && (k.startsWith(mk) || weekKeys.has(k)));
+/** Checked day keys for a resolution within [fromKey, toKey] (day keys sort lexicographically). */
+function checkedDaysIn(id, fromKey, toKey) {
+  const c = state.checks[id] || {};
+  return Object.keys(c).filter(k => c[k] && k >= fromKey && k <= toKey).sort();
 }
+function doneInWeek(id, d) { const s = startOfWeek(d); return checkedDaysIn(id, dayKey(s), dayKey(addDays(s, 6))); }
+function doneInMonth(id, d) { const mk = monthKey(d); return checkedDaysIn(id, `${mk}-01`, `${mk}-31`); }
+function hasChecksThisMonth(id) { return doneInMonth(id, today()).length > 0; }
 /** Removes from the template; from the current month only if it has no checks there yet. */
 function removeResolution(id) {
   state.template.resolutions = state.template.resolutions.filter(r => r.id !== id);
@@ -133,15 +137,10 @@ function moveResolution(id, dir) {
   if (j < 0 || j >= same.length) return;
   [same[i], same[j]] = [same[j], same[i]];
   same.forEach((r, k) => { r.order = k; });
-  const m = currentMonth();
-  m.resolutions.forEach(mr => { const tr = state.template.resolutions.find(r => r.id === mr.id); if (tr) mr.order = tr.order; });
+  currentMonth().resolutions.forEach(mr => { const tr = state.template.resolutions.find(r => r.id === mr.id); if (tr) mr.order = tr.order; });
   save();
 }
-function setParticular(text) {
-  state.template.particular = text;
-  currentMonth().particular = text;
-  save();
-}
+function setParticular(text) { state.template.particular = text; currentMonth().particular = text; save(); }
 function isChecked(id, key) { return !!(state.checks[id] && state.checks[id][key]); }
 function toggleCheck(id, key) {
   state.checks[id] = state.checks[id] || {};
@@ -150,23 +149,22 @@ function toggleCheck(id, key) {
 }
 function getScore(dk) { return state.scores[dk] || null; }
 function setScore(dk, v) { if (v == null) delete state.scores[dk]; else state.scores[dk] = v; save(); }
+/** Whether a resolution is "up to date" on day d: daily → checked that day; weekly/monthly → done any day in the period. */
+function upToDate(r, d) {
+  if (r.freq === 'daily') return isChecked(r.id, dayKey(d));
+  return (r.freq === 'weekly' ? doneInWeek(r.id, d) : doneInMonth(r.id, d)).length > 0;
+}
 
 // ===== rendering =====
 const ui = { tab: 'hoy', day: today(), month: { y: today().getFullYear(), m0: today().getMonth() }, editing: null };
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtAvg = n => n.toFixed(1).replace('.', ',');
+const listES = arr => arr.length <= 1 ? arr.join('') : `${arr.slice(0, -1).join(', ')} y ${arr[arr.length - 1]}`;
 
 function emptyCard(title, text, gotoTab) {
   return `<section class="card empty"><h2>${esc(title)}</h2><p>${esc(text)}</p>` +
-    (gotoTab ? `<button class="pill" data-action="goto" data-tab="${gotoTab}">Ir a Resoluciones</button>` : '') + `</section>`;
-}
-function checklistHTML(list, keyFor) {
-  return `<ul class="checklist">` + list.map(r => {
-    const key = keyFor(r), on = isChecked(r.id, key);
-    return `<li><button class="row ${on ? 'done' : ''}" data-action="check" data-id="${r.id}" data-key="${key}" aria-pressed="${on}">` +
-      `<span class="box"></span><span class="txt">${esc(r.text)}</span></button></li>`;
-  }).join('') + `</ul>`;
+    (gotoTab ? `<button class="pill" data-action="goto" data-tab="${gotoTab}">Ir a Configuración</button>` : '') + `</section>`;
 }
 
 function renderHoy() {
@@ -175,29 +173,34 @@ function renderHoy() {
   let html = `<div class="daynav">
     <button class="icon" data-action="day:prev" aria-label="Día anterior">&#8249;</button>
     <div class="daynav-title"><div class="big">${esc(cap(fmtLong(d)))}</div>
-      ${isToday ? '' : `<button class="pill" data-action="day:today">Volver a hoy</button>`}</div>
+      ${isToday && isLateNight() ? `<div class="latenight">Madrugada: el día sigue siendo el ${esc(DIAS[weekdayIndex(d)])} hasta las 6:00</div>` : ''}
+      ${isToday ? '' : `<button class="pill" data-action="day:today">Día pasado · volver a hoy</button>`}</div>
     <button class="icon" data-action="day:next" ${isToday ? 'disabled' : ''} aria-label="Día siguiente">&#8250;</button>
   </div>`;
-  if (!m) return html + emptyCard('Este mes no tiene horario', 'No se abrió la app durante este mes, así que no hay resoluciones registradas.');
+  if (!m) return html + emptyCard('Este mes no tiene horario', 'No se abrió la app durante este mes, así que no hay puntos registrados.');
   const res = sortedRes(m.resolutions);
-  if (!res.length && !m.particular) return html + emptyCard('Aún no tienes resoluciones', 'Empieza por añadir tu examen particular y tus resoluciones.', 'resoluciones');
+  if (!res.length && !m.particular) return html + emptyCard('Aún no tienes puntos', 'Empieza por definir tu examen particular y los puntos de tu horario.', 'config');
   if (m.particular) {
     const sc = getScore(dk);
     html += `<section class="card"><div class="card-label">Examen particular</div>
       <div class="particular-text">${esc(m.particular)}</div>
       <div class="scores">${[1, 2, 3, 4, 5].map(v => `<button class="score ${sc === v ? 'on' : ''}" data-action="score" data-v="${v}" aria-pressed="${sc === v}">${v}</button>`).join('')}</div>
-      <div class="hint">${sc ? esc(SCORE_LABELS[sc]) : 'Puntúa del 1 al 5 cómo viviste tu propósito.'}</div></section>`;
+      ${sc ? '' : `<div class="hint">Puntúa del 1 al 5 cómo viviste hoy tu propósito.</div>`}</section>`;
   }
-  if (res.length) {
-    const done = res.filter(r => isChecked(r.id, periodKey(r.freq, d))).length;
-    html += `<div class="progress">${done} de ${res.length} cumplidas</div>`;
-  }
+  if (res.length) html += `<div class="progress">${res.filter(r => upToDate(r, d)).length} de ${res.length} al día</div>`;
   for (const f of FREQS) {
     const list = res.filter(r => r.freq === f.id);
     if (!list.length) continue;
-    const sub = f.id === 'weekly' ? weekLabel(d) : f.id === 'monthly' ? cap(MESES[d.getMonth()]) : '';
-    html += `<section class="card"><div class="card-label">${f.title}${sub ? ` <span class="muted">· ${esc(sub)}</span>` : ''}</div>` +
-      checklistHTML(list, r => periodKey(f.id, d)) + `</section>`;
+    html += `<section class="card"><div class="card-label">${f.title}</div><ul class="checklist">` + list.map(r => {
+      const on = isChecked(r.id, dk);
+      let sub = '';
+      if (f.id !== 'daily') {
+        const others = (f.id === 'weekly' ? doneInWeek(r.id, d) : doneInMonth(r.id, d)).filter(k => k !== dk);
+        sub = others.length ? `${f.scope}: hecho el ${listES(others.map(k => fmtShort(parseDay(k))))}` : (on ? '' : `${f.scope}: pendiente`);
+      }
+      return `<li><button class="row ${on ? 'done' : ''}" data-action="check" data-id="${r.id}" data-key="${dk}" aria-pressed="${on}">` +
+        `<span class="box"></span><span class="txt">${esc(r.text)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button></li>`;
+    }).join('') + `</ul></section>`;
   }
   return html;
 }
@@ -210,16 +213,18 @@ function renderMes() {
     <div class="daynav-title"><div class="big">${cap(MESES[m0])} ${y}</div></div>
     <button class="icon" data-action="month:next" ${isCurrent ? 'disabled' : ''} aria-label="Mes siguiente">&#8250;</button>
   </div>`;
-  if (!m) return html + emptyCard('Sin horario este mes', 'No hay resoluciones registradas para este mes.');
+  if (!m) return html + emptyCard('Sin horario este mes', 'No hay puntos registrados para este mes.');
   const res = sortedRes(m.resolutions);
-  if (!res.length && !m.particular) return html + emptyCard('Sin resoluciones', 'Este mes no tiene resoluciones registradas.', isCurrent ? 'resoluciones' : null);
+  if (!res.length && !m.particular) return html + emptyCard('Sin puntos', 'Este mes no tiene puntos registrados.', isCurrent ? 'config' : null);
 
-  const nDays = daysInMonth(y, m0);
-  const lastDay = isCurrent ? today().getDate() : nDays;           // days elapsed
+  const nDays = daysInMonth(y, m0), days = range(1, nDays);
+  const lastDay = isCurrent ? today().getDate() : nDays;            // days elapsed
   const weeks = weeksOfMonth(y, m0);
-  const elapsedWeeks = weeks.filter(w => w.start <= today()).length;
-  const cls = d => { const wd = weekdayIndex(new Date(y, m0, d)); return (wd >= 5 ? 'we ' : '') + (isCurrent && d === lastDay ? 'today' : ''); };
-  const scores = range(1, nDays).map(d => getScore(`${mk}-${pad2(d)}`)).filter(Boolean);
+  const elapsed = weeks.filter(w => w.start <= today());
+  const dateOf = d => new Date(y, m0, d);
+  const cls = d => [weekdayIndex(dateOf(d)) >= 5 ? 'we' : '', isCurrent && d === lastDay ? 'today' : '',
+    d > 1 && weekdayIndex(dateOf(d)) === 0 ? 'wk' : ''].filter(Boolean).join(' ');
+  const scores = days.map(d => getScore(`${mk}-${pad2(d)}`)).filter(Boolean);
   const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 
   if (m.particular) {
@@ -227,50 +232,38 @@ function renderMes() {
       <div class="particular-text">${esc(m.particular)}</div>
       <div class="stat">${avg ? `Media <b>${fmtAvg(avg)}</b> · ${scores.length} ${scores.length === 1 ? 'día puntuado' : 'días puntuados'}` : 'Sin puntuaciones todavía'}</div></section>`;
   }
-  const daily = res.filter(r => r.freq === 'daily');
-  if (daily.length || m.particular) {
-    html += `<section class="card grid-card"><div class="card-label">Diarias</div><div class="gridwrap"><table class="grid"><thead>
-      <tr><th class="lab"></th>${range(1, nDays).map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(new Date(y, m0, d))]}</th>`).join('')}<th class="tot"></th></tr>
-      <tr><th class="lab"></th>${range(1, nDays).map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
-    if (m.particular) {
-      html += `<tr class="examen"><th class="lab">Examen particular</th>` + range(1, nDays).map(d => {
-        const s = getScore(`${mk}-${pad2(d)}`);
-        return `<td class="${cls(d)} ${s ? 's' + s : ''}">${d <= lastDay ? (s || '·') : ''}</td>`;
-      }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
-    }
-    for (const r of daily) {
+  const groups = FREQS.map(f => ({ ...f, items: res.filter(r => r.freq === f.id) })).filter(g => g.items.length);
+  html += `<section class="card grid-card"><div class="gridwrap"><table class="grid"><thead>
+    <tr class="weeksrow"><th class="lab"></th>${weeks.map(w => `<th colspan="${w.end.getDate() - w.start.getDate() + 1}" class="${w.start.getDate() > 1 ? 'wk' : ''}">${w.label}</th>`).join('')}<th class="tot"></th></tr>
+    <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
+    <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
+  if (m.particular) {
+    html += `<tr class="examen"><th class="lab">Examen particular</th>` + days.map(d => {
+      const s = getScore(`${mk}-${pad2(d)}`);
+      return `<td class="${cls(d)} ${s ? 's' + s : ''}">${d <= lastDay ? (s || '·') : ''}</td>`;
+    }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
+  }
+  for (const g of groups) {
+    html += `<tr class="group"><th class="lab">${g.title}</th><td colspan="${nDays}"></td><td class="tot"></td></tr>`;
+    for (const r of g.items) {
       let n = 0;
-      const cells = range(1, nDays).map(d => {
+      const cells = days.map(d => {
         const k = `${mk}-${pad2(d)}`, on = isChecked(r.id, k), future = d > lastDay;
         if (on) n++;
         return `<td class="${cls(d)} ${on ? 'on' : ''} ${future ? 'future' : ''}" ${future ? '' : `data-action="check" data-id="${r.id}" data-key="${k}"`}>${on ? '✓' : (future ? '' : '·')}</td>`;
       }).join('');
-      html += `<tr><th class="lab">${esc(r.text)}</th>${cells}<td class="tot">${n}/${lastDay}</td></tr>`;
+      const total = g.id === 'daily' ? `${n}/${lastDay}`
+        : g.id === 'weekly' ? `${elapsed.filter(w => checkedDaysIn(r.id, dayKey(w.ws), dayKey(w.we)).length).length}/${elapsed.length}`
+        : (n ? '✓' : '–');
+      html += `<tr><th class="lab">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
     }
-    html += `</tbody></table></div></section>`;
   }
-  const weekly = res.filter(r => r.freq === 'weekly');
-  if (weekly.length) {
-    html += `<section class="card grid-card"><div class="card-label">Semanales</div><div class="gridwrap"><table class="grid weeks"><thead>
-      <tr><th class="lab"></th>${weeks.map(w => `<th>${w.label}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
-    for (const r of weekly) {
-      let n = 0;
-      const cells = weeks.map(w => {
-        const on = isChecked(r.id, w.key), future = w.start > today();
-        if (on) n++;
-        return `<td class="${on ? 'on' : ''} ${future ? 'future' : ''}" ${future ? '' : `data-action="check" data-id="${r.id}" data-key="${w.key}"`}>${on ? '✓' : (future ? '' : '·')}</td>`;
-      }).join('');
-      html += `<tr><th class="lab">${esc(r.text)}</th>${cells}<td class="tot">${n}/${elapsedWeeks}</td></tr>`;
-    }
-    html += `</tbody></table></div></section>`;
-  }
-  const monthly = res.filter(r => r.freq === 'monthly');
-  if (monthly.length) html += `<section class="card"><div class="card-label">Mensuales</div>${checklistHTML(monthly, () => mk)}</section>`;
+  html += `</tbody></table></div></section>`;
   html += `<div class="actions"><button class="primary" data-action="pdf">Exportar PDF</button></div>`;
   return html;
 }
 
-function renderResoluciones() {
+function renderConfig() {
   const t = state.template;
   let html = `<section class="card"><div class="card-label">Examen particular</div>
     <textarea id="particular" rows="2" placeholder="Ej.: Vivir la paciencia en casa">${esc(t.particular)}</textarea>
@@ -280,7 +273,7 @@ function renderResoluciones() {
     html += `<section class="card"><div class="card-label">${f.title}</div><ul class="editlist">`;
     list.forEach((r, i) => {
       html += `<li class="editrow">` + (ui.editing === r.id
-        ? `<input class="edit-input" data-id="${r.id}" value="${esc(r.text)}" aria-label="Editar resolución">`
+        ? `<input class="edit-input" data-id="${r.id}" value="${esc(r.text)}" aria-label="Editar punto">`
         : `<button class="txt" data-action="edit" data-id="${r.id}" title="Tocar para editar">${esc(r.text)}</button>`) +
         `<span class="rowbtns">
           <button class="mini" data-action="move" data-id="${r.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Subir">&#8593;</button>
@@ -288,28 +281,24 @@ function renderResoluciones() {
           <button class="mini danger" data-action="remove" data-id="${r.id}" aria-label="Eliminar">&#215;</button>
         </span></li>`;
     });
-    html += `</ul><form class="addrow" data-freq="${f.id}"><input name="text" placeholder="Nueva resolución ${f.one}" autocomplete="off" enterkeyhint="done"><button type="submit">Añadir</button></form></section>`;
+    html += `</ul><form class="addrow" data-freq="${f.id}"><input name="text" placeholder="Nuevo punto ${f.one}" autocomplete="off" enterkeyhint="done"><button type="submit">Añadir</button></form></section>`;
   }
-  html += `<p class="note">Los cambios se aplican al mes actual y a los siguientes; los meses anteriores no cambian. Si eliminas una resolución que ya tiene marcas este mes, se conserva en este mes y desaparece a partir del próximo.</p>`;
-  return html;
-}
-
-function renderAjustes() {
+  html += `<p class="note">Los cambios se aplican al mes actual y a los siguientes; los meses anteriores no cambian. Si eliminas un punto que ya tiene marcas este mes, se conserva en este mes y desaparece a partir del próximo.</p>`;
   const kb = ((localStorage.getItem(STORAGE_KEY) || '').length / 1024).toFixed(1);
   const months = Object.keys(state.months).length;
-  return `<section class="card"><div class="card-label">Datos</div>
+  html += `<section class="card"><div class="card-label">Datos</div>
     <p>Todo se guarda en este dispositivo (${kb} KB, ${months} ${months === 1 ? 'mes' : 'meses'}). Nada sale del teléfono.</p>
     <p class="hint">Haz una copia de vez en cuando: si borras la app de la pantalla de inicio, sus datos se borran con ella.</p>
     <div class="actions col"><button class="secondary" data-action="export">Exportar copia (JSON)</button>
     <button class="secondary" data-action="import">Importar copia…</button></div></section>
-    <section class="card"><div class="card-label">Acerca de</div><p>Horario Espiritual · versión ${APP_VERSION}</p>
-    <p class="hint">Una ayuda para vivir el Horario Espiritual: pocas resoluciones, revisadas cada mes.</p></section>`;
+    <p class="note">Horario Espiritual · versión ${APP_VERSION}</p>`;
+  return html;
 }
 
 function render() {
   document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === ui.tab));
-  $('#title').textContent = { hoy: 'Hoy', mes: 'Mes', resoluciones: 'Resoluciones', ajustes: 'Ajustes' }[ui.tab];
-  $('#view').innerHTML = ({ hoy: renderHoy, mes: renderMes, resoluciones: renderResoluciones, ajustes: renderAjustes })[ui.tab]();
+  $('#title').textContent = TITLES[ui.tab];
+  $('#view').innerHTML = ({ hoy: renderHoy, mes: renderMes, config: renderConfig })[ui.tab]();
   if (ui.editing) { const inp = $('.edit-input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
 }
 
@@ -353,8 +342,7 @@ function removeResolutionUI(id) {
 
 $('#view').addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if (!el || el.disabled) return;
-  const a = el.dataset.action;
-  switch (a) {
+  switch (el.dataset.action) {
     case 'day:prev': ui.day = addDays(ui.day, -1); break;
     case 'day:next': if (ui.day < today()) ui.day = addDays(ui.day, 1); break;
     case 'day:today': ui.day = today(); break;
@@ -396,15 +384,14 @@ document.querySelector('.tabbar').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]'); if (!b) return;
   ui.tab = b.dataset.tab; ui.editing = null; render();
 });
-$('#btn-settings').addEventListener('click', () => { ui.tab = 'ajustes'; ui.editing = null; render(); });
 $('#file-import').addEventListener('change', e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ''; });
 
-// Midnight rollover while the app stays open: follow "today" if the user was on it.
+// Day rollover (06:00) while the app stays open: follow the logical "today" if the user was on it.
 let lastToday = dayKey(today());
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
-  const now = dayKey(today());
-  if (now !== lastToday) { if (dayKey(ui.day) === lastToday) ui.day = today(); lastToday = now; }
+  const t = dayKey(today());
+  if (t !== lastToday) { if (dayKey(ui.day) === lastToday) ui.day = today(); lastToday = t; }
   render();
 });
 

@@ -1,8 +1,8 @@
 # Horario Espiritual (PWA)
 
 Personal, single-user, offline-first web app to track a Schoenstatt "Horario Espiritual":
-daily/weekly/monthly resolutions (checkboxes), one "examen particular" scored 1–5 per day,
-month view exportable as PDF. Spanish UI. No backend, no login: data lives in localStorage.
+daily/weekly/monthly "puntos" checked per day, one "examen particular" scored 1–5 per day,
+month view exportable as PDF. The logical day rolls over at 06:00, not midnight. Spanish UI. No backend, no login: data lives in localStorage.
 
 - Full spec, decisions, data model and step checklist: `docs/PLAN.md` (read it first).
 - Source: `index.html`, `styles.css`, `app.js` (+ `sw.js`, `manifest.webmanifest` once step 7 lands).
