@@ -91,6 +91,9 @@ is possible later.
 - [x] Step 2 — Data layer + date utils + Hoy view (`app.js`).
 - [x] Step 3 — Resoluciones editor with template/current-month semantics.
 - [x] Step 4 — Mes view: grids, toggling, navigation.
+      Verified 2026-09-01 in the in-app browser: date helpers unit-tested (ISO weeks incl. year
+      boundaries and DST), and scripted checks of add/edit/reorder/remove semantics, month
+      freezing, score toggle and cell toggling all passed.
 - [ ] Step 5 — PDF export (jsPDF, share sheet, A4 landscape). Button currently shows a toast.
 - [x] Step 6 — Backup export/import + Ajustes (basic version done; polish in step 7).
 - [ ] Step 7 — PWA: `manifest.webmanifest`, icons, `sw.js` (cache-first shell, runtime cache
