@@ -3,3 +3,4 @@
 node_modules/
 horario-espiritual-*.json
 *.backup.json
+private/
