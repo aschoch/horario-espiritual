@@ -46,7 +46,7 @@ Read this file first when resuming. Update the **Status** checklist after each s
 | Naming | Tabs: Hoy · Mes · Configuración. Configuración screen title: "Puntos del horario espiritual"; UI says "punto", code says `resolution`. Data/backup and about live at the bottom of Configuración (no separate settings screen). |
 | Editing the past | Allowed for checks and scores in any month (fixing forgotten days). Future days are disabled. The resolution LIST of a past month is frozen. |
 | Month grid | ONE table: header rows = week spans ("1–6", "7–13"), weekday letters, day numbers; then the examen row and group rows (Diarios / Semanales / Mensuales) with one row per punto. Monday columns get a left border. Totals: daily `n/daysElapsed`, weekly `weeksDone/weeksElapsed` (a week counts if any day of the full ISO week is checked), monthly ✓ or –. The PDF will mirror this table. |
-| PDF | jsPDF 2.5.1 loaded lazily from cdnjs only when exporting (core app has zero deps). A4 landscape, drawn with lines/text. Delivered via `navigator.share({files})` (works in iOS standalone PWAs, where `window.print()` does not); falls back to download. |
+| PDF | jsPDF 2.5.1 from cdnjs, loaded when the Mes tab opens (so the export tap keeps its user activation for the share sheet) and cached by the SW. `buildPdf()` draws one A4 landscape page: title, examen line with average, grid (week labels, weekday letters, day numbers, weekend shading, week separators, green filled boxes with a drawn check, empty outlined boxes for elapsed days, blank future days), totals (daily n/N, weekly w/W, monthly count), footer with the calendar date. Modelled on Alfredo's Google-Sheet export ("a bit nicer, don't overdo it"). Delivered via `navigator.share({files})`; falls back to a download. Helvetica only (WinAnsi covers Spanish accents and …). |
 | Hosting | GitHub Pages, public repo `aschoch/horario-espiritual` (personal account; `AlfredoSchoch` is the work account). Live at https://aschoch.github.io/horario-espiritual/ . Code only; his data stays on the phone. |
 | Icons | Generated with Pillow (`scripts/make_icons.py`): 180 (apple-touch-icon), 192, 512. |
 | App frame | `.app` is a flex column (header / scrolling `main` / tab bar) sized `100dvh`; the body never scrolls. Needed for the rotated mode and avoids iOS rubber-banding. |
@@ -54,7 +54,7 @@ Read this file first when resuming. Update the **Status** checklist after each s
 | Examen per month | Each month snapshot keeps the examen that was live then; Mes shows it (card in portrait, a line under the title in rotated mode). Editing the text in Configuración applies to the template and the current month only. A history list in Configuración was built in v0.4 and removed in v0.4.1 at Alfredo's request ("didn't need it there"). |
 | Horizontal month view | iOS web apps cannot lock orientation and portrait lock is common, so Mes has a "Girar" toggle: `.app.rotated` rotates the whole frame 90° via CSS transform (`width:100dvh; height:100dvw`), the grid becomes `table-layout: fixed; width:100%` so all 31 days fit. Session-only (`ui.rotated`), applies only while on Mes. Real device landscape also works when the lock is off. In rotated mode the `.lab`/`.tot` columns are `position: static` (WebKit pins sticky cells to the wrong edge inside the transformed frame → Total showed mid-table on the iPhone) and a `<colgroup>` gives even day columns under `table-layout: fixed`. |
 | Updates | Same-origin files are **network-first with revalidation** (`cache: 'no-cache'`, 4 s timeout → cache fallback), so any real launch with connectivity shows the latest deploy; offline still works. `sw.js` `VERSION` (= `APP_VERSION`) is bumped per deploy; on activate the SW posts `sw-activated` and the page shows a toast only if that version differs from the running one. Configuración has "Buscar actualizaciones" (`reg.update()` + reload). iOS often *resumes* a suspended home-screen app instead of reloading it, so the manual path is: swipe the app away and reopen. GitHub Pages serves with `max-age=600`, hence the revalidation. |
-| Motion | Enter animations only on navigation (tab/day/month/rotate: fade-up with stagger or slide). The touched element gets a `pop` (checkbox spring + drawn check, score chip, grid cell flash). Progress bar animates width between renders. Tab indicator springs. Sheet slides up. All gated behind `prefers-reduced-motion: no-preference`. |
+| Motion | Enter animations only on navigation (tab/day/month/rotate: fade-up with stagger or slide). The touched element gets a `pop` (checkbox spring + drawn check, score chip, grid cell flash). Tab indicator springs. Sheet slides up. All gated behind `prefers-reduced-motion: no-preference`. |
 
 ## 4. Data model (`localStorage['he.v1']`)
 
@@ -104,7 +104,6 @@ Alfredo pointed to these as his taste reference. Rules applied, keep following t
 - Never animate from scale(0); enters use translateY(8px)+opacity, "settle" starts at scale(.94).
 - Buttons scale to 0.97 on press (100 ms). Use transitions (interruptible) for state that can flip
   quickly: box colour, toast, sheet. Keyframes only for one-shot flourishes.
-- No infinite animations: "¡Día completo!" settles once, only when the day just became complete.
 - Toast: transition-based slide/fade, 3.5 s auto-dismiss, tap to dismiss; sticky variant for updates.
 - Everything is behind `prefers-reduced-motion: no-preference`.
 
@@ -114,6 +113,8 @@ Alfredo pointed to these as his taste reference. Rules applied, keep following t
   monthly puntos must be checked on the actual day (he wants to see *when* in the month view);
   rename Resoluciones → tab "Configuración", screen "Puntos del horario espiritual"; drop the
   score words. All applied in v0.2.
+- 2026-09-02 (later): PDF export built from his May 2026 sheet export as reference; he asked to remove
+  the progress bar ("15 de 16 al día") from Hoy → removed in v0.6.
 - 2026-09-02 (later): asked to draw delight ideas from emilkowal.ski and animations.dev → §5a, v0.5.
 - 2026-09-02 (later): update toast never showed on the phone (old version had no toast code; iOS
   resumes the app instead of reloading) → network-first SW + manual update button (v0.4.2).
@@ -137,7 +138,7 @@ Alfredo pointed to these as his taste reference. Rules applied, keep following t
       Verified 2026-09-01 in the in-app browser: date helpers unit-tested (ISO weeks incl. year
       boundaries and DST), and scripted checks of add/edit/reorder/remove semantics, month
       freezing, score toggle and cell toggling all passed.
-- [ ] Step 5 — PDF export (jsPDF, share sheet, A4 landscape). Button currently shows a toast.
+- [x] Step 5 — PDF export (v0.6, 2026-09-02): jsPDF, share sheet, A4 landscape. See Decisions → PDF.
 - [x] Step 10 (v0.4, 2026-09-02) — bottom-sheet confirmations, examen particular history, rotated
       month view, motion/delight pass. See Decisions.
 - [x] Step 11 (v0.5, 2026-09-02) — motion pass 2 following Emil Kowalski's principles (§5a): shorter

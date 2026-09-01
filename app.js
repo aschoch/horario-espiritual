@@ -5,7 +5,7 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.5.1';
+const APP_VERSION = '0.6';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -156,7 +156,7 @@ function upToDate(r, d) {
 }
 // ===== rendering =====
 const ui = { tab: 'hoy', day: today(), month: { y: today().getFullYear(), m0: today().getMonth() }, editing: null,
-  rotated: false, anim: 'fade', lastPct: 0, completeKey: null };
+  rotated: false, anim: 'fade' };
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtAvg = n => n.toFixed(1).replace('.', ',');
@@ -187,13 +187,6 @@ function renderHoy() {
       <div class="scores">${[1, 2, 3, 4, 5].map(v => `<button class="score ${sc === v ? 'on' : ''}" data-action="score" data-v="${v}" aria-pressed="${sc === v}">${v}</button>`).join('')}</div>
       ${sc ? '' : `<div class="hint">Puntúa del 1 al 5 cómo viviste hoy tu propósito.</div>`}</section>`;
   }
-  if (res.length) {
-    const done = res.filter(r => upToDate(r, d)).length, pct = Math.round(100 * done / res.length);
-    const complete = done === res.length, settle = complete && ui.completeKey !== dk;
-    ui.completeKey = complete ? dk : null;
-    html += `<div class="progress"><div class="track"><div class="bar" style="width:${ui.lastPct}%" data-target="${pct}"></div></div>
-      <span class="count">${done} de ${res.length} al día</span>${complete ? `<span class="complete ${settle ? 'settle' : ''}">¡Día completo!</span>` : ''}</div>`;
-  }
   for (const f of FREQS) {
     const list = res.filter(r => r.freq === f.id);
     if (!list.length) continue;
@@ -211,9 +204,25 @@ function renderHoy() {
   return html;
 }
 
-function renderMes() {
-  const { y, m0 } = ui.month, mk = monthKeyOf(y, m0), isCurrent = mk === monthKey(today());
+/** Everything the month view and the PDF need for one month. `m` is null when the month has no snapshot. */
+function monthModel(y, m0) {
+  const mk = monthKeyOf(y, m0), isCurrent = mk === monthKey(today());
   const m = isCurrent ? ensureMonth(mk) : getMonth(mk);
+  if (!m) return { mk, isCurrent, m: null };
+  const res = sortedRes(m.resolutions), nDays = daysInMonth(y, m0), days = range(1, nDays);
+  const lastDay = isCurrent ? today().getDate() : nDays;            // days elapsed
+  const weeks = weeksOfMonth(y, m0), elapsed = weeks.filter(w => w.start <= today());
+  const groups = FREQS.map(f => ({ ...f, items: res.filter(r => r.freq === f.id) })).filter(g => g.items.length);
+  const scores = days.map(d => getScore(`${mk}-${pad2(d)}`)).filter(Boolean);
+  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+  const countOf = r => days.filter(d => d <= lastDay && isChecked(r.id, `${mk}-${pad2(d)}`)).length;
+  const weeksDone = r => elapsed.filter(w => checkedDaysIn(r.id, dayKey(w.ws), dayKey(w.we)).length).length;
+  return { mk, isCurrent, m, res, nDays, days, lastDay, weeks, elapsed, groups, scores, avg, countOf, weeksDone };
+}
+
+function renderMes() {
+  const { y, m0 } = ui.month;
+  const M = monthModel(y, m0), { mk, isCurrent, m } = M;
   let html = `<div class="daynav">
     <button class="icon" data-action="month:prev" aria-label="Mes anterior">&#8249;</button>
     <div class="daynav-title"><div class="big">${cap(MESES[m0])} ${y}</div>
@@ -222,53 +231,147 @@ function renderMes() {
     <button class="icon" data-action="month:next" ${isCurrent ? 'disabled' : ''} aria-label="Mes siguiente">&#8250;</button>
   </div>`;
   if (!m) return html + emptyCard('Sin horario este mes', 'No hay puntos registrados para este mes.');
-  const res = sortedRes(m.resolutions);
+  const { res, nDays, days, lastDay, weeks, elapsed, groups, scores, avg } = M;
   if (!res.length && !m.particular) return html + emptyCard('Sin puntos', 'Este mes no tiene puntos registrados.', isCurrent ? 'config' : null);
-
-  const nDays = daysInMonth(y, m0), days = range(1, nDays);
-  const lastDay = isCurrent ? today().getDate() : nDays;            // days elapsed
-  const weeks = weeksOfMonth(y, m0);
-  const elapsed = weeks.filter(w => w.start <= today());
   const dateOf = d => new Date(y, m0, d);
   const cls = d => [weekdayIndex(dateOf(d)) >= 5 ? 'we' : '', isCurrent && d === lastDay ? 'today' : '',
     d > 1 && weekdayIndex(dateOf(d)) === 0 ? 'wk' : ''].filter(Boolean).join(' ');
-  const scores = days.map(d => getScore(`${mk}-${pad2(d)}`)).filter(Boolean);
-  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 
   if (m.particular) {
     html += `<section class="card hide-rotated"><div class="card-label">Examen particular</div>
       <div class="particular-text">${esc(m.particular)}</div>
       <div class="stat">${avg ? `Media <b>${fmtAvg(avg)}</b> · ${scores.length} ${scores.length === 1 ? 'día puntuado' : 'días puntuados'}` : 'Sin puntuaciones todavía'}</div></section>`;
   }
-  const groups = FREQS.map(f => ({ ...f, items: res.filter(r => r.freq === f.id) })).filter(g => g.items.length);
   html += `<section class="card grid-card"><div class="gridwrap"><table class="grid"><colgroup><col class="c-lab">${days.map(() => '<col>').join('')}<col class="c-tot"></colgroup><thead>
     <tr class="weeksrow"><th class="lab"></th>${weeks.map(w => `<th colspan="${w.end.getDate() - w.start.getDate() + 1}" class="${w.start.getDate() > 1 ? 'wk' : ''}">${w.label}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
   if (m.particular) {
     html += `<tr class="examen"><th class="lab" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
-      const s = getScore(`${mk}-${pad2(d)}`);
-      return `<td class="${cls(d)} ${s ? 's' + s : ''}">${d <= lastDay ? (s || '·') : ''}</td>`;
+      const sc = getScore(`${mk}-${pad2(d)}`);
+      return `<td class="${cls(d)} ${sc ? 's' + sc : ''}">${d <= lastDay ? (sc || '·') : ''}</td>`;
     }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
   }
   for (const g of groups) {
     html += `<tr class="group"><th class="lab">${g.title}</th><td colspan="${nDays}"></td><td class="tot"></td></tr>`;
     for (const r of g.items) {
-      let n = 0;
+      const n = M.countOf(r);
       const cells = days.map(d => {
         const k = `${mk}-${pad2(d)}`, on = isChecked(r.id, k), future = d > lastDay;
-        if (on) n++;
         return `<td class="${cls(d)} ${on ? 'on' : ''} ${future ? 'future' : ''}" ${future ? '' : `data-action="check" data-id="${r.id}" data-key="${k}"`}>${on ? '✓' : (future ? '' : '·')}</td>`;
       }).join('');
-      const total = g.id === 'daily' ? `${n}/${lastDay}`
-        : g.id === 'weekly' ? `${elapsed.filter(w => checkedDaysIn(r.id, dayKey(w.ws), dayKey(w.we)).length).length}/${elapsed.length}`
-        : (n ? '✓' : '–');
+      const total = g.id === 'daily' ? `${n}/${lastDay}` : g.id === 'weekly' ? `${M.weeksDone(r)}/${elapsed.length}` : (n ? '✓' : '–');
       html += `<tr><th class="lab" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
     }
   }
   html += `</tbody></table></div></section>`;
   html += `<div class="actions"><button class="primary" data-action="pdf">Exportar PDF</button></div>`;
   return html;
+}
+
+// ===== PDF export (jsPDF, loaded on demand from cdnjs; cached by the service worker afterwards) =====
+const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+let jspdfLoading = null;
+function loadJsPdf() {
+  if (window.jspdf) return Promise.resolve(window.jspdf);
+  if (!jspdfLoading) jspdfLoading = new Promise((resolve, reject) => {
+    const sc = document.createElement('script'); sc.src = JSPDF_URL;
+    sc.onload = () => resolve(window.jspdf); sc.onerror = () => { jspdfLoading = null; sc.remove(); reject(new Error('jspdf')); };
+    document.head.appendChild(sc);
+  });
+  return jspdfLoading;
+}
+/** One A4 landscape page: title, examen line, then the month grid (days across, puntos down). */
+function buildPdf(lib, y, m0, M) {
+  const { mk, m, nDays, days, lastDay, weeks, elapsed, groups, scores, avg } = M;
+  const doc = new lib.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+  const W = 297, H = 210, MG = 12;
+  const INK = [28, 30, 38], MUTED = [107, 114, 128], LINE = [229, 231, 235], LINE2 = [203, 207, 214], WE = [244, 245, 248], GREEN = [31, 122, 77];
+  const dateOf = d => new Date(y, m0, d);
+  // title
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...INK);
+  doc.text(`Horario espiritual · ${cap(MESES[m0])} ${y}`, MG, MG + 5);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...MUTED);
+  if (m.particular) {
+    const extra = avg ? `   ·   media ${fmtAvg(avg)} (${scores.length} ${scores.length === 1 ? 'día' : 'días'})` : '';
+    doc.text(`Examen particular: ${m.particular}${extra}`, MG, MG + 11);
+  }
+  // geometry
+  const labelW = 62, totW = 16, x0 = MG, tableW = W - 2 * MG, dayW = (tableW - labelW - totW) / nDays;
+  const xDay = d => x0 + labelW + (d - 1) * dayW, xTot = x0 + labelW + nDays * dayW;
+  const hdr = [4.6, 4.6, 5.4], hdrH = hdr.reduce((a, b) => a + b, 0);
+  const yTop = MG + (m.particular ? 16 : 10);
+  const rows = (m.particular ? 1 : 0) + groups.reduce((n, g) => n + 1 + g.items.length, 0);
+  const rowH = Math.min(6.4, Math.max(4.4, (H - MG - 6 - yTop - hdrH) / Math.max(rows, 1)));
+  const tableH = hdrH + rows * rowH, yBottom = yTop + tableH;
+  // weekend shading and week separators (full table height)
+  doc.setFillColor(...WE);
+  days.forEach(d => { if (weekdayIndex(dateOf(d)) >= 5) doc.rect(xDay(d), yTop + hdr[0], dayW, tableH - hdr[0], 'F'); });
+  doc.setDrawColor(...LINE2); doc.setLineWidth(0.25);
+  days.forEach(d => { if (d > 1 && weekdayIndex(dateOf(d)) === 0) doc.line(xDay(d), yTop, xDay(d), yBottom); });
+  doc.line(x0 + labelW, yTop, x0 + labelW, yBottom); doc.line(xTot, yTop, xTot, yBottom);
+  // header rows
+  doc.setFontSize(6.5); doc.setTextColor(...MUTED);
+  weeks.forEach(w => { const a = w.start.getDate(), b = w.end.getDate(); doc.text(w.label, xDay(a) + (b - a + 1) * dayW / 2, yTop + hdr[0] - 1.3, { align: 'center' }); });
+  days.forEach(d => doc.text(DIAS_L[weekdayIndex(dateOf(d))], xDay(d) + dayW / 2, yTop + hdr[0] + hdr[1] - 1.3, { align: 'center' }));
+  doc.setFontSize(7.5); doc.setTextColor(...INK);
+  days.forEach(d => doc.text(String(d), xDay(d) + dayW / 2, yTop + hdrH - 1.6, { align: 'center' }));
+  doc.setFontSize(6.5); doc.setTextColor(...MUTED); doc.text('Total', xTot + totW - 1, yTop + hdrH - 1.6, { align: 'right' });
+  doc.setDrawColor(...LINE2); doc.setLineWidth(0.3); doc.line(x0, yTop + hdrH, x0 + tableW, yTop + hdrH);
+  // helpers
+  const fit = (t, maxW) => { let s = t; if (doc.getTextWidth(s) <= maxW) return s; while (s.length > 1 && doc.getTextWidth(s + '…') > maxW) s = s.slice(0, -1); return s.trimEnd() + '…'; };
+  const box = Math.min(dayW, rowH) * 0.62, bx = (dayW - box) / 2, by = (rowH - box) / 2;
+  const drawBox = (d, yRow, on) => {
+    const x = xDay(d) + bx, yy = yRow + by;
+    if (on) {
+      doc.setFillColor(...GREEN); doc.setDrawColor(...GREEN); doc.roundedRect(x, yy, box, box, 0.5, 0.5, 'F');
+      doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.4);
+      doc.line(x + box * 0.24, yy + box * 0.52, x + box * 0.43, yy + box * 0.72); doc.line(x + box * 0.43, yy + box * 0.72, x + box * 0.78, yy + box * 0.3);
+    } else { doc.setDrawColor(...LINE2); doc.setLineWidth(0.25); doc.roundedRect(x, yy, box, box, 0.5, 0.5, 'S'); }
+  };
+  let yRow = yTop + hdrH;
+  const rowLine = yy => { doc.setDrawColor(...LINE); doc.setLineWidth(0.2); doc.line(x0, yy, x0 + tableW, yy); };
+  if (m.particular) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...INK);
+    doc.text('Examen particular', x0 + 1.5, yRow + rowH / 2, { baseline: 'middle' });
+    days.forEach(d => { const sc = getScore(`${mk}-${pad2(d)}`); if (sc) doc.text(String(sc), xDay(d) + dayW / 2, yRow + rowH / 2, { align: 'center', baseline: 'middle' }); });
+    if (avg) doc.text(fmtAvg(avg), xTot + totW - 1, yRow + rowH / 2, { align: 'right', baseline: 'middle' });
+    yRow += rowH; rowLine(yRow);
+  }
+  for (const g of groups) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(...MUTED);
+    doc.text(g.title.toUpperCase(), x0 + 1.5, yRow + rowH / 2, { baseline: 'middle', charSpace: 0.3 });
+    yRow += rowH; rowLine(yRow);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    for (const r of g.items) {
+      doc.setTextColor(...INK); doc.text(fit(r.text, labelW - 3), x0 + 1.5, yRow + rowH / 2, { baseline: 'middle' });
+      days.forEach(d => { if (d <= lastDay) drawBox(d, yRow, isChecked(r.id, `${mk}-${pad2(d)}`)); });
+      const n = M.countOf(r);
+      const total = g.id === 'daily' ? `${n}/${lastDay}` : g.id === 'weekly' ? `${M.weeksDone(r)}/${elapsed.length}` : String(n);
+      doc.setTextColor(...MUTED); doc.text(total, xTot + totW - 1, yRow + rowH / 2, { align: 'right', baseline: 'middle' });
+      yRow += rowH; rowLine(yRow);
+    }
+  }
+  // footer
+  const t = new Date(); // calendar date, not the 06:00 logical day
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...MUTED);
+  doc.text(`Generado el ${t.getDate()} de ${MESES[t.getMonth()]} de ${t.getFullYear()} · Horario Espiritual`, MG, H - MG + 4);
+  return doc;
+}
+async function exportPdf() {
+  const { y, m0 } = ui.month, M = monthModel(y, m0);
+  if (!M.m || (!M.res.length && !M.m.particular)) { toast('Este mes no tiene horario que exportar.'); return; }
+  let lib;
+  try { lib = await loadJsPdf(); } catch (e) { toast('No se pudo cargar el generador de PDF. ¿Sin conexión?'); return; }
+  const doc = buildPdf(lib, y, m0, M);
+  const name = `horario-espiritual-${M.mk}.pdf`, blob = doc.output('blob');
+  const file = new File([blob], name, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: `Horario espiritual · ${cap(MESES[m0])} ${y}` }); return; }
+    catch (e) { if (e.name === 'AbortError') return; if (e.name === 'NotAllowedError') { toast('Toca de nuevo para compartir el PDF.'); return; } }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 function renderConfig() {
@@ -317,9 +420,8 @@ function render() {
   view.className = ui.anim ? `anim-${ui.anim}` : '';
   ui.anim = null;
   view.innerHTML = ({ hoy: renderHoy, mes: renderMes, config: renderConfig })[ui.tab]();
+  if (ui.tab === 'mes' && navigator.onLine !== false) loadJsPdf().catch(() => {});
   if (ui.editing) { const inp = $('.edit-input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
-  const bar = $('.progress .bar');
-  if (bar) { const target = +bar.dataset.target; requestAnimationFrame(() => { bar.style.width = target + '%'; }); ui.lastPct = target; }
 }
 /** Re-render and briefly animate the element matching `sel` (the thing the user just touched). */
 function renderAndPop(sel) {
@@ -424,7 +526,7 @@ $('#view').addEventListener('click', e => {
     case 'move': moveResolution(id, +el.dataset.dir); break;
     case 'remove': removeResolutionUI(id); return;
     case 'goto': ui.tab = el.dataset.tab; ui.anim = 'fade'; break;
-    case 'pdf': toast('La exportación a PDF llega en el siguiente paso.'); return;
+    case 'pdf': exportPdf(); return;
     case 'export': exportBackup(); return;
     case 'update': checkForUpdates(); return;
     case 'import': $('#file-import').click(); return;
