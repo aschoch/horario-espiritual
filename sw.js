@@ -2,7 +2,7 @@
    Same-origin files are NETWORK-FIRST with revalidation (so a fresh launch shows the latest deploy when
    online) and fall back to the cache when offline or slow. cdnjs libraries (jsPDF) are cache-first.
    VERSION must match APP_VERSION in app.js; bump both on every deploy. */
-const VERSION = '0.5';
+const VERSION = '0.5.1';
 const CACHE = `he-shell-v${VERSION}`;
 const SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];

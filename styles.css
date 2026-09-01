@@ -56,10 +56,15 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .app.rotated .show-rotated { display: block; }
 .daynav .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .daynav .sub b { font-weight: 500; color: var(--text); }
+.app.rotated .gridwrap { overflow: visible; }
 .app.rotated table.grid { width: 100%; table-layout: fixed; font-size: 11px; }
+.app.rotated table.grid col.c-lab { width: 150px; }
+.app.rotated table.grid col.c-tot { width: 44px; }
 .app.rotated table.grid th, .app.rotated table.grid td { height: 26px; min-width: 0; }
-.app.rotated table.grid th.lab { width: 150px; min-width: 0; padding-left: 8px; font-size: 12px; }
-.app.rotated table.grid .tot { width: 44px; min-width: 0; padding: 0 4px; font-size: 11px; }
+/* the table fits the screen here, and sticky misbehaves inside the transformed frame in WebKit */
+.app.rotated table.grid th.lab, .app.rotated table.grid .tot { position: static; width: auto; min-width: 0; max-width: none; }
+.app.rotated table.grid th.lab { padding-left: 8px; font-size: 12px; }
+.app.rotated table.grid .tot { padding: 0 4px; font-size: 11px; }
 .app.rotated table.grid thead th { height: 16px; }
 .app.rotated table.grid thead tr:last-child th { height: 20px; font-size: 11px; }
 

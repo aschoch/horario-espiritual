@@ -5,7 +5,7 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.5';
+const APP_VERSION = '0.5.1';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -241,7 +241,7 @@ function renderMes() {
       <div class="stat">${avg ? `Media <b>${fmtAvg(avg)}</b> · ${scores.length} ${scores.length === 1 ? 'día puntuado' : 'días puntuados'}` : 'Sin puntuaciones todavía'}</div></section>`;
   }
   const groups = FREQS.map(f => ({ ...f, items: res.filter(r => r.freq === f.id) })).filter(g => g.items.length);
-  html += `<section class="card grid-card"><div class="gridwrap"><table class="grid"><thead>
+  html += `<section class="card grid-card"><div class="gridwrap"><table class="grid"><colgroup><col class="c-lab">${days.map(() => '<col>').join('')}<col class="c-tot"></colgroup><thead>
     <tr class="weeksrow"><th class="lab"></th>${weeks.map(w => `<th colspan="${w.end.getDate() - w.start.getDate() + 1}" class="${w.start.getDate() > 1 ? 'wk' : ''}">${w.label}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
