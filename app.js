@@ -5,7 +5,12 @@
 
 // ===== constants =====
 const STORAGE_KEY = 'he.v1';
-const APP_VERSION = '0.7.1';
+/* The theme lives in its own key, not in the state blob: it is a preference of this device, so it must
+   not travel in backups, and index.html reads it synchronously before the first paint. */
+const THEME_KEY = 'he.theme';
+const THEMES = [{ id: 'auto', label: 'Automático' }, { id: 'light', label: 'Claro' }, { id: 'dark', label: 'Oscuro' }];
+const DEFAULT_THEME = 'dark'; // he fills the horario at night
+const APP_VERSION = '0.8.0';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -111,6 +116,26 @@ function save() {
 }
 const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 let state = load();
+
+// ----- theme (see the pre-paint script in index.html) -----
+const prefersDark = matchMedia('(prefers-color-scheme: dark)'); // keep the reference: a stray MediaQueryList can be collected
+function getTheme() {
+  try { const t = localStorage.getItem(THEME_KEY); return THEMES.some(x => x.id === t) ? t : DEFAULT_THEME; }
+  catch (e) { return DEFAULT_THEME; }
+}
+function setTheme(id) {
+  try { localStorage.setItem(THEME_KEY, id); } catch (e) { /* private mode: applies for this session only */ }
+  applyTheme();
+}
+/** Resolve auto/light/dark to the attribute the stylesheet keys off, and repaint the iOS status bar. */
+function applyTheme() {
+  const pref = getTheme();
+  const dark = pref === 'dark' || (pref === 'auto' && prefersDark.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+}
+prefersDark.addEventListener('change', () => { if (getTheme() === 'auto') applyTheme(); });
 
 // ===== domain ops =====
 const sortedRes = list => [...list].sort((a, b) => a.order - b.order);
@@ -432,6 +457,13 @@ function renderConfig() {
   html += `<section class="card"><div class="card-label">Tu nombre</div>
     <input id="name" class="field" value="${esc(state.settings.name || '')}" placeholder="Ej.: Josef Engling" autocomplete="name">
     <div class="hint">Aparece en el título del PDF y en el nombre del archivo.</div></section>`;
+  const theme = getTheme();
+  html += `<section class="card"><div class="card-label">Apariencia</div>
+    <div class="segmented" role="group" aria-label="Apariencia">` +
+    THEMES.map(t => `<button class="${t.id === theme ? 'on' : ''}" data-action="theme" data-theme="${t.id}"
+      aria-pressed="${t.id === theme}">${t.label}</button>`).join('') +
+    `</div><div class="hint">Oscuro es lo normal aquí: casi siempre lo rellenas de noche. «Automático» sigue
+    al iPhone. El PDF sale siempre en claro, para imprimirlo.</div></section>`;
   const kb = ((localStorage.getItem(STORAGE_KEY) || '').length / 1024).toFixed(1);
   const months = Object.keys(state.months).length;
   html += `<section class="card"><div class="card-label">Datos</div>
@@ -563,6 +595,7 @@ $('#view').addEventListener('click', e => {
     case 'move': moveResolution(id, +el.dataset.dir); break;
     case 'remove': removeResolutionUI(id); return;
     case 'goto': ui.tab = el.dataset.tab; ui.anim = 'fade'; break;
+    case 'theme': setTheme(el.dataset.theme); break;
     case 'pdf': exportPdf(); return;
     case 'export': exportBackup(); return;
     case 'update': checkForUpdates(); return;
@@ -611,6 +644,7 @@ document.addEventListener('visibilitychange', () => {
 
 // ===== boot =====
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+applyTheme();
 render();
 // Service worker: offline shell. Files are network-first, so a fresh launch already shows the latest
 // deploy; the toast only appears if the SW that just activated is newer than the page that is running.

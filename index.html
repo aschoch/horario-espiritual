@@ -4,10 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Horario Espiritual</title>
-<meta name="theme-color" content="#1f3a5f">
+<meta name="theme-color" content="#0f1115">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Horario">
+<script>
+/* Resolve the theme before the first paint so the app never flashes white at night.
+   Keep in sync with applyTheme() in app.js, which owns it from then on. */
+(function () {
+  var pref = 'dark';
+  try { var t = localStorage.getItem('he.theme'); if (t === 'auto' || t === 'light') pref = t; } catch (e) {}
+  var dark = pref === 'dark' || (pref === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+})();
+</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
