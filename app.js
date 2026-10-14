@@ -295,7 +295,8 @@ function weekIndex(weeks, isCurrent) {
 }
 /** Portrait month: one week, seven tappable days. The full month stays on Girar and on the PDF. */
 function renderWeek(M) {
-  const { y, m0, mk, isCurrent, m, lastDay, weeks, elapsed, groups, scores, avg } = M;
+  const { y, m0 } = ui.month;
+  const { mk, isCurrent, m, lastDay, weeks, elapsed, groups, scores, avg } = M;
   const idx = weekIndex(weeks, isCurrent), w = weeks[idx];
   const days = range(w.start.getDate(), w.end.getDate());
   const cols = `style="grid-template-columns:repeat(${days.length},minmax(0,1fr))"`;

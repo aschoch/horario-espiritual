@@ -191,7 +191,8 @@ table.grid tr.weeksrow th { font-size: 11px; color: var(--muted); height: 18px; 
 .weeknav-title { font-size: 16px; font-weight: 600; }
 .weekcard { padding: 12px 12px 14px; }
 .whead, .wcells { display: grid; gap: 4px; }
-.whead > span { text-align: center; }
+.whead > span, .wcells > * { min-width: 0; }
+.whead > span { text-align: center; overflow: hidden; }
 .whead .let { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
 .whead .num { display: block; font-size: 13px; font-weight: 700; }
 .whead .today .num, .whead .today .let { color: var(--accent); }
