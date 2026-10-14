@@ -242,10 +242,11 @@ function renderHoy() {
   let body = '';
   if (m.particular) {
     const sc = getScore(dk);
-    body += `<section class="card"><div class="card-label">Examen particular</div>
+    const known = Object.keys(state.scores).length >= 3;
+    body += `<section class="card examen-hoy">
       <div class="particular-text">${esc(m.particular)}</div>
       <div class="scores">${[1, 2, 3, 4, 5].map(v => `<button class="score ${sc === v ? 'on' : ''}" data-action="score" data-v="${v}" aria-pressed="${sc === v}">${v}</button>`).join('')}</div>
-      ${sc ? '' : `<div class="hint">Puntúa del 1 al 5 cómo viviste hoy tu propósito.</div>`}</section>`;
+      ${sc || known ? '' : `<div class="hint">Puntúa del 1 al 5 cómo viviste hoy tu propósito.</div>`}</section>`;
   }
   for (const f of FREQS) {
     const list = res.filter(r => r.freq === f.id);
