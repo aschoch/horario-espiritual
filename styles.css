@@ -79,7 +79,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .app.rotated table.grid thead tr:last-child th { height: 20px; font-size: 11px; }
 
 /* ---- generic ---- */
-.icon { background: none; border: 0; font-size: 26px; line-height: 1; padding: 6px 10px; color: var(--accent); }
+.icon { background: none; border: 0; font-size: 28px; line-height: 1; width: 44px; height: 44px; padding: 0;
+  color: var(--accent); display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .pill { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px;
   font-size: 12px; color: var(--accent); margin-top: 6px; }
 .primary { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 12px; padding: 13px 18px; font-weight: 600; width: 100%; }
