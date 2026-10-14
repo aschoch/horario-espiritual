@@ -206,19 +206,17 @@ table.grid tr.weeksrow th { font-size: 11px; color: var(--muted); height: 18px; 
 .tabbar button, table.grid td, table.grid th, .row, .score, .mini, .icon, .pill { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 @media (prefers-reduced-motion: no-preference) {
   /* Rules of thumb applied here (Emil Kowalski): stay under 300 ms, ease-out for entering/exiting,
-     never animate from scale(0), and the more frequent the interaction the less it animates. */
+     never animate from scale(0), and the more frequent the interaction the less it animates.
+     Only .slide moves, so the date row stays put. Tabs fade as one block, without a stagger. */
   @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes slideL { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } }
   @keyframes slideR { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
   @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
   @keyframes drawCheck { from { height: 0; width: 0; opacity: 0; } 45% { width: 6px; height: 0; opacity: 1; } to { width: 6px; height: 12px; opacity: 1; } }
   @keyframes cellFlash { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
-  #view.anim-fade > * { animation: fadeUp .22s var(--ease-out) both; }
-  #view.anim-fade > :nth-child(n+2) { animation-delay: .03s; }
-  #view.anim-fade > :nth-child(n+3) { animation-delay: .06s; }
-  #view.anim-fade > :nth-child(n+4) { animation-delay: .09s; }
-  #view.anim-left > * { animation: slideL .22s var(--ease-out) both; }
-  #view.anim-right > * { animation: slideR .22s var(--ease-out) both; }
+  #view.anim-fade > .slide { animation: fadeUp .18s var(--ease-out) both; }
+  #view.anim-left > .slide { animation: slideL .2s var(--ease-out) both; }
+  #view.anim-right > .slide { animation: slideR .2s var(--ease-out) both; }
   .row.pop .box { animation: pop .22s var(--ease-out); }
   .row.pop.done .box::after { animation: drawCheck .18s var(--ease-out) both; }
   .score.pop { animation: pop .2s var(--ease-out); }

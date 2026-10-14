@@ -223,23 +223,26 @@ function emptyCard(title, text, gotoTab) {
   return `<section class="card empty"><h2>${esc(title)}</h2><p>${esc(text)}</p>` +
     (gotoTab ? `<button class="pill" data-action="goto" data-tab="${gotoTab}">Ir a Configuración</button>` : '') + `</section>`;
 }
+/** Cards that move. The date row stays outside this, so changing day does not slide the header. */
+function slide(inner) { return `<div class="slide">${inner}</div>`; }
 
 function renderHoy() {
   const d = ui.day, dk = dayKey(d), mk = monthKey(d), isToday = sameDay(d, today());
   const m = mk === monthKey(today()) ? ensureMonth(mk) : getMonth(mk);
-  let html = backupBannerHtml() + `<div class="daynav">
+  const head = backupBannerHtml() + `<div class="daynav">
     <button class="icon" data-action="day:prev" aria-label="Día anterior">&#8249;</button>
     <div class="daynav-title"><div class="big">${esc(cap(fmtLong(d)))}</div>
       ${isToday && isLateNight() ? `<div class="latenight">Madrugada: el día sigue siendo el ${esc(DIAS[weekdayIndex(d)])} hasta las 6:00</div>` : ''}
       ${isToday ? '' : `<button class="pill" data-action="day:today">Día pasado · volver a hoy</button>`}</div>
     <button class="icon" data-action="day:next" ${isToday ? 'disabled' : ''} aria-label="Día siguiente">&#8250;</button>
   </div>`;
-  if (!m) return html + emptyCard('Este mes no tiene horario', 'No se abrió la app durante este mes, así que no hay puntos registrados.');
+  if (!m) return head + slide(emptyCard('Este mes no tiene horario', 'No se abrió la app durante este mes, así que no hay puntos registrados.'));
   const res = sortedRes(m.resolutions);
-  if (!res.length && !m.particular) return html + emptyCard('Aún no tienes puntos', 'Empieza por definir tu examen particular y los puntos de tu horario.', 'config');
+  if (!res.length && !m.particular) return head + slide(emptyCard('Aún no tienes puntos', 'Empieza por definir tu examen particular y los puntos de tu horario.', 'config'));
+  let body = '';
   if (m.particular) {
     const sc = getScore(dk);
-    html += `<section class="card"><div class="card-label">Examen particular</div>
+    body += `<section class="card"><div class="card-label">Examen particular</div>
       <div class="particular-text">${esc(m.particular)}</div>
       <div class="scores">${[1, 2, 3, 4, 5].map(v => `<button class="score ${sc === v ? 'on' : ''}" data-action="score" data-v="${v}" aria-pressed="${sc === v}">${v}</button>`).join('')}</div>
       ${sc ? '' : `<div class="hint">Puntúa del 1 al 5 cómo viviste hoy tu propósito.</div>`}</section>`;
@@ -247,7 +250,7 @@ function renderHoy() {
   for (const f of FREQS) {
     const list = res.filter(r => r.freq === f.id);
     if (!list.length) continue;
-    html += `<section class="card"><div class="card-label">${f.title}</div><ul class="checklist">` + list.map(r => {
+    body += `<section class="card"><div class="card-label">${f.title}</div><ul class="checklist">` + list.map(r => {
       const on = isChecked(r.id, dk);
       let sub = '';
       if (f.id !== 'daily') {
@@ -258,7 +261,7 @@ function renderHoy() {
         `<span class="box"></span><span class="txt">${esc(r.text)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button></li>`;
     }).join('') + `</ul></section>`;
   }
-  return html;
+  return head + slide(body);
 }
 
 /** Everything the month view and the PDF need for one month. `m` is null when the month has no snapshot. */
@@ -280,37 +283,38 @@ function monthModel(y, m0) {
 function renderMes() {
   const { y, m0 } = ui.month;
   const M = monthModel(y, m0), { mk, isCurrent, m } = M;
-  let html = `<div class="daynav">
+  const head = `<div class="daynav">
     <button class="icon" data-action="month:prev" aria-label="Mes anterior">&#8249;</button>
     <div class="daynav-title"><div class="big">${cap(MESES[m0])} ${y}</div>
       ${m && m.particular ? `<div class="sub show-rotated">Examen particular: <b>${esc(m.particular)}</b></div>` : ''}
       <button class="pill" data-action="rotate" title="${ui.rotated ? 'Volver a vertical' : 'Ver el mes entero girado'}">${ui.rotated ? 'Volver' : 'Girar'}</button></div>
     <button class="icon" data-action="month:next" ${isCurrent ? 'disabled' : ''} aria-label="Mes siguiente">&#8250;</button>
   </div>`;
-  if (!m) return html + emptyCard('Sin horario este mes', 'No hay puntos registrados para este mes.');
+  if (!m) return head + slide(emptyCard('Sin horario este mes', 'No hay puntos registrados para este mes.'));
   const { res, nDays, days, lastDay, weeks, elapsed, groups, scores, avg } = M;
-  if (!res.length && !m.particular) return html + emptyCard('Sin puntos', 'Este mes no tiene puntos registrados.', isCurrent ? 'config' : null);
+  if (!res.length && !m.particular) return head + slide(emptyCard('Sin puntos', 'Este mes no tiene puntos registrados.', isCurrent ? 'config' : null));
   const dateOf = d => new Date(y, m0, d);
   const cls = d => [weekdayIndex(dateOf(d)) >= 5 ? 'we' : '', isCurrent && d === lastDay ? 'today' : '',
     d > 1 && weekdayIndex(dateOf(d)) === 0 ? 'wk' : ''].filter(Boolean).join(' ');
 
+  let body = '';
   if (m.particular) {
-    html += `<section class="card hide-rotated"><div class="card-label">Examen particular</div>
+    body += `<section class="card hide-rotated"><div class="card-label">Examen particular</div>
       <div class="particular-text">${esc(m.particular)}</div>
       <div class="stat">${avg ? `Media <b>${fmtAvg(avg)}</b> · ${scores.length} ${scores.length === 1 ? 'día puntuado' : 'días puntuados'}` : 'Sin puntuaciones todavía'}</div></section>`;
   }
-  html += `<section class="card grid-card"><div class="gridwrap"><table class="grid"><colgroup><col class="c-lab">${days.map(() => '<col>').join('')}<col class="c-tot"></colgroup><thead>
+  body += `<section class="card grid-card"><div class="gridwrap"><table class="grid"><colgroup><col class="c-lab">${days.map(() => '<col>').join('')}<col class="c-tot"></colgroup><thead>
     <tr class="weeksrow"><th class="lab"></th>${weeks.map(w => `<th colspan="${w.end.getDate() - w.start.getDate() + 1}" class="${w.start.getDate() > 1 ? 'wk' : ''}">${w.label}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
   if (m.particular) {
-    html += `<tr class="examen"><th class="lab" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
+    body += `<tr class="examen"><th class="lab" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
       const sc = getScore(`${mk}-${pad2(d)}`);
       return `<td class="${cls(d)} ${sc ? 's' + sc : ''}">${d <= lastDay ? (sc || '·') : ''}</td>`;
     }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
   }
   for (const g of groups) {
-    html += `<tr class="group"><th class="lab">${g.title}</th><td colspan="${nDays}"></td><td class="tot"></td></tr>`;
+    body += `<tr class="group"><th class="lab">${g.title}</th><td colspan="${nDays}"></td><td class="tot"></td></tr>`;
     for (const r of g.items) {
       const n = M.countOf(r);
       const cells = days.map(d => {
@@ -318,12 +322,12 @@ function renderMes() {
         return `<td class="${cls(d)} ${on ? 'on' : ''} ${future ? 'future' : ''}" ${future ? '' : `data-action="check" data-id="${r.id}" data-key="${k}"`}>${on ? '✓' : (future ? '' : '·')}</td>`;
       }).join('');
       const total = g.id === 'daily' ? `${n}/${lastDay}` : g.id === 'weekly' ? `${M.weeksDone(r)}/${elapsed.length}` : (n ? '✓' : '–');
-      html += `<tr><th class="lab" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
+      body += `<tr><th class="lab" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
     }
   }
-  html += `</tbody></table></div></section>`;
-  html += `<div class="actions"><button class="primary" data-action="pdf">Exportar PDF</button></div>`;
-  return html;
+  body += `</tbody></table></div></section>`;
+  body += `<div class="actions"><button class="primary" data-action="pdf">Exportar PDF</button></div>`;
+  return head + slide(body);
 }
 
 // ===== PDF export (jsPDF, loaded on demand from cdnjs; cached by the service worker afterwards) =====
@@ -481,7 +485,7 @@ function renderConfig() {
   const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
   if (!standalone) html += `<section class="card"><div class="card-label">Instalar en el iPhone</div>
     <p>En Safari, toca <b>Compartir</b> y luego <b>«Añadir a pantalla de inicio»</b>. La app se abrirá a pantalla completa y funcionará sin conexión.</p></section>`;
-  return html;
+  return slide(html);
 }
 
 function render() {
