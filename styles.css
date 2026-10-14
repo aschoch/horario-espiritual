@@ -142,9 +142,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .editrow { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .editrow .txt { flex: 1; text-align: left; background: none; border: 0; padding: 8px 0; font-size: 16px; }
 .edit-input { flex: 1; border: 1px solid var(--accent-2); border-radius: 8px; padding: 7px 8px; background: var(--bg); }
-.rowbtns { display: flex; gap: 4px; }
-.mini { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); font-size: 15px; }
-.mini.danger { color: var(--danger); }
+.rowbtns { display: flex; gap: 8px; }
+.mini { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; }
+.mini.danger { color: var(--danger); margin-left: 8px; }
 .addrow { display: flex; gap: 8px; margin-top: 10px; }
 .addrow input { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); min-width: 0; }
 .addrow button { border: 0; border-radius: 10px; background: var(--accent); color: var(--on-accent); padding: 0 14px; font-weight: 600; }
