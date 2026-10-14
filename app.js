@@ -562,6 +562,21 @@ const FREQ_IDS = new Set(FREQS.map(f => f.id));
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_RE = /^\d{4}-\d{2}$/;
 const WEEK_RE = /^\d{4}-W\d{2}$/;
+function validMonthKey(k) {
+  if (!MONTH_RE.test(k)) return false;
+  const m = Number(k.slice(5));
+  return m >= 1 && m <= 12;
+}
+function validDayKey(k) {
+  if (!DAY_RE.test(k)) return false;
+  const m = Number(k.slice(5, 7)), d = Number(k.slice(8));
+  return m >= 1 && m <= 12 && d >= 1 && d <= 31;
+}
+function validWeekKey(k) {
+  if (!WEEK_RE.test(k)) return false;
+  const w = Number(k.slice(6));
+  return w >= 1 && w <= 53;
+}
 
 function readStamp(key) {
   try { const n = Number(localStorage.getItem(key)); return Number.isFinite(n) && n > 0 ? n : 0; }
@@ -640,7 +655,7 @@ function validResolution(r) {
   if (typeof r.text !== 'string' || r.text.length > 1000) return false;
   if (!FREQ_IDS.has(r.freq)) return false;
   if (r.order != null && (typeof r.order !== 'number' || !Number.isFinite(r.order))) return false;
-  if (r.createdAt != null && (typeof r.createdAt !== 'string' || !DAY_RE.test(r.createdAt))) return false;
+  if (r.createdAt != null && (typeof r.createdAt !== 'string' || !validDayKey(r.createdAt))) return false;
   return true;
 }
 /** Structural check before any confirm or write. Legacy v1 period keys are allowed; migrate() drops them. */
@@ -655,7 +670,7 @@ function isBackup(s) {
   if (monthKeys.length > 240) return false;
   for (const mk of monthKeys) {
     const m = s.months[mk];
-    if (!MONTH_RE.test(mk) || !plainObject(m)) return false;
+    if (!validMonthKey(mk) || !plainObject(m)) return false;
     if (m.particular != null && (typeof m.particular !== 'string' || m.particular.length > 1000)) return false;
     if (m.resolutions != null && !Array.isArray(m.resolutions)) return false;
     if (Array.isArray(m.resolutions) && (m.resolutions.length > 400 || !m.resolutions.every(validResolution))) return false;
@@ -666,7 +681,7 @@ function isBackup(s) {
     for (const days of Object.values(s.checks)) {
       if (!plainObject(days)) return false;
       for (const [k, v] of Object.entries(days)) {
-        if (v !== true || !(DAY_RE.test(k) || WEEK_RE.test(k) || MONTH_RE.test(k))) return false;
+        if (v !== true || !(validDayKey(k) || validWeekKey(k) || validMonthKey(k))) return false;
         if (++n > 100000) return false;
       }
     }
@@ -675,7 +690,7 @@ function isBackup(s) {
   if (s.scores) {
     const scores = Object.entries(s.scores);
     if (scores.length > 20000) return false;
-    for (const [k, v] of scores) if (!DAY_RE.test(k) || !Number.isInteger(v) || v < 1 || v > 5) return false;
+    for (const [k, v] of scores) if (!validDayKey(k) || !Number.isInteger(v) || v < 1 || v > 5) return false;
   }
   if (s.settings != null && !plainObject(s.settings)) return false;
   if (s.settings && s.settings.name != null && (typeof s.settings.name !== 'string' || s.settings.name.length > 200)) return false;
