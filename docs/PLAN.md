@@ -37,7 +37,7 @@ Read this file first when resuming. Update the **Status** checklist after each s
 |---|---|
 | Stack | Vanilla HTML/CSS/JS, no build step, no framework. One `index.html`, `app.js`, `styles.css`, `sw.js`, `manifest.webmanifest`. |
 | Language | Spanish UI only (domain terms are Spanish). Strings live inline; no i18n layer. |
-| Storage | `localStorage` key `he.v1`, one JSON document (see §4). Data never leaves the phone. `navigator.storage.persist()` requested at boot. Backup = JSON export via share sheet. |
+| Storage | `localStorage` key `he.v1`, one JSON document (see §4). Data never leaves the phone unless the user sends a copia. `navigator.storage.persist()` requested at boot. |
 | Month snapshots | Each month gets its own frozen copy of the resolution list + examen text, created lazily **only for the current month** the first time it is opened. Past months never opened stay empty (read-only message). |
 | Template edits | Apply to the template AND the current month's snapshot. Past months untouched. Removing a resolution that already has checks this month: removed from template only; it stays in the current month ("retired") and disappears from next month on. **Re-adding** a punto whose normalized text matches a retired one in the current month revives it (same id, ticks kept); a match in a past month reuses that id so history stays continuous; a match in the active template is refused (toast). State v3 `repairDuplicates()` folds duplicates created before this fix. |
 | Checks | **Every frequency is checked on a specific day**: `checks[id][YYYY-MM-DD] = true`, stored globally (not per month). Weekly/monthly puntos are "up to date" when any day of the current ISO week / month is checked; Hoy shows "Esta semana: hecho el martes 1" or "pendiente". (v1 used period keys; `migrate()` drops them.) |
@@ -57,6 +57,7 @@ Read this file first when resuming. Update the **Status** checklist after each s
 | Updates | Same-origin files are **network-first with revalidation** (`cache: 'no-cache'`, 4 s timeout → cache fallback), so any real launch with connectivity shows the latest deploy; offline still works. `sw.js` `VERSION` (= `APP_VERSION`) is bumped per deploy; on activate the SW posts `sw-activated` and the page shows a toast only if that version differs from the running one. Configuración has "Buscar actualizaciones" (`reg.update()` + reload). iOS often *resumes* a suspended home-screen app instead of reloading it, so the manual path is: swipe the app away and reopen. GitHub Pages serves with `max-age=600`, hence the revalidation. |
 | Motion | Enter animations only on navigation (tab/day/month/rotate: fade-up with stagger or slide). The touched element gets a `pop` (checkbox spring + drawn check, score chip, grid cell flash). Tab indicator springs. Sheet slides up. All gated behind `prefers-reduced-motion: no-preference`. |
 | Tema (v0.8) | Light and dark palettes are CSS custom properties; dark is switched on by `data-theme="dark"` on `<html>`. Configuración → Apariencia writes `localStorage['he.theme']` = `auto` \| `light` \| `dark`, **default `dark`** (he fills the horario at night and the phone is not in dark mode). A tiny inline script in `index.html` resolves it before the first paint so there is no white flash; `applyTheme()` in app.js owns it afterwards and keeps the `theme-color` meta in sync with `--bg` (iOS status bar). Kept out of the state blob on purpose: it is a device preference and must not travel in backups. The PDF stays light — it is made to be printed. |
+| Copia (v0.9) | Configuración → Datos: **Guardar copia** writes `he.v1` as `horario-espiritual-YYYY-MM-DD.json` and opens the share sheet (`navigator.share({files})`) so one tap can send it by WhatsApp or save it to Archivos, iCloud or Drive. No Google account and no API key. WebKit gets the `.json`; Android Chrome's sheet rejects `application/json`, so there the same JSON is shared as `.txt`. A computer always downloads the `.json` (Chrome on desktop claims it can share JSON and then refuses). **Restaurar copia** checks the shape (`isBackup`: template, months, freqs, day keys, scores 1–5; legacy v1 period keys still allowed) and only then asks in the bottom sheet; a bad file never touches state. A small banner on Hoy shows when there is real data and the last copia is 30 days old or missing — missing counts only once the data itself is 30 days old (`he.dataSince`, inferred from checks/`createdAt` so an existing history reminds immediately, a brand-new horario does not). «Ahora no» snoozes it 30 days. `he.backupAt`, `he.backupSnooze` and `he.dataSince` stay out of the blob, like the theme. |
 
 ## 4. Data model (`localStorage['he.v1']`)
 
@@ -92,7 +93,7 @@ text reuses its id) so history per resolution is continuous. `settings.name` hol
 - **Mes** — month navigator; examen card with average; one grid (see Decisions); "Exportar PDF".
 - **Configuración** ("Puntos del horario espiritual") — examen particular textarea; three sections
   with inline edit, ↑↓ reorder, × delete, add form each; note on month semantics; Datos card
-  (export/import JSON backup); version line.
+  (Guardar copia / Restaurar copia); version line. Hoy shows a dismissible copia banner when one is due.
 
 ## 5a. Motion principles (v0.5, from Emil Kowalski — emilkowal.ski, animations.dev)
 
@@ -111,6 +112,7 @@ Alfredo pointed to these as his taste reference. Rules applied, keep following t
 
 ## 5b. Feedback log
 
+- 2026-10-14: a simple way to keep a copy. Guardar copia opens the system share sheet (WhatsApp, Archivos, Drive) instead of a Google sign-in; Restaurar copia confirms first; Hoy reminds after 30 days (v0.9).
 - 2026-09-16: "I mostly fill it in the night, and it's too bright" → dark mode. The dark palette existed but only followed `prefers-color-scheme`, and his iPhone stays in light mode, so it had never shown. Turned it into a real setting (Apariencia, default Oscuro) and fixed the palette where it had never been exercised: white text on the light dark-mode accent, the white checkmark, the inverted (white) toast, `color-scheme` for native controls and the keyboard (v0.8).
 - 2026-09-01 (after first slice): fill happens at night → 6am rollover + explicit date; weekly and
   monthly puntos must be checked on the actual day (he wants to see *when* in the month view);
@@ -163,9 +165,11 @@ Alfredo pointed to these as his taste reference. Rules applied, keep following t
 - [~] Step 9 — Preload from his sheet: DONE as `private/preload-horario.json` (gitignored; 60 months,
       May 2021–Jun 2026). Generated by `private/import_xlsx.py`. Frequencies are NOT in the sheet and
       are assigned by label inside that script (see `private/NOTES.md`); CONFIRMED 2026-09-02.
-      Import path on the phone: Configuración → Importar copia.
+      Import path on the phone: Configuración → Restaurar copia.
 - [x] Step 12 (v0.8, 2026-09-16) — dark mode: Apariencia setting (Automático / Claro / Oscuro, default Oscuro),
       pre-paint theme resolution, palette fixes, dark `theme-color` + manifest colors.
+- [x] Step 13 (v0.9, 2026-10-14) — Guardar / Restaurar copia: share sheet (JSON, or .txt on Android Chrome),
+      download fallback, shape check plus confirm before overwrite, 30-day dismissible banner on Hoy.
 - [ ] Optional — importer for the old app's backup JSON.
 
 ## 6b. Source spreadsheet layout (for the importer)

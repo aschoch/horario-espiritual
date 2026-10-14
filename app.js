@@ -10,7 +10,7 @@ const STORAGE_KEY = 'he.v1';
 const THEME_KEY = 'he.theme';
 const THEMES = [{ id: 'auto', label: 'Automático' }, { id: 'light', label: 'Claro' }, { id: 'dark', label: 'Oscuro' }];
 const DEFAULT_THEME = 'dark'; // he fills the horario at night
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.9.0';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -112,7 +112,8 @@ function load() {
 }
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  catch (e) { console.error('save failed', e); toast('No se pudo guardar. ¿Almacenamiento lleno?'); }
+  catch (e) { console.error('save failed', e); toast('No se pudo guardar. ¿Almacenamiento lleno?'); return; }
+  noteDataSince();
 }
 const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 let state = load();
@@ -226,7 +227,7 @@ function emptyCard(title, text, gotoTab) {
 function renderHoy() {
   const d = ui.day, dk = dayKey(d), mk = monthKey(d), isToday = sameDay(d, today());
   const m = mk === monthKey(today()) ? ensureMonth(mk) : getMonth(mk);
-  let html = `<div class="daynav">
+  let html = backupBannerHtml() + `<div class="daynav">
     <button class="icon" data-action="day:prev" aria-label="Día anterior">&#8249;</button>
     <div class="daynav-title"><div class="big">${esc(cap(fmtLong(d)))}</div>
       ${isToday && isLateNight() ? `<div class="latenight">Madrugada: el día sigue siendo el ${esc(DIAS[weekdayIndex(d)])} hasta las 6:00</div>` : ''}
@@ -466,11 +467,13 @@ function renderConfig() {
     al iPhone. El PDF sale siempre en claro, para imprimirlo.</div></section>`;
   const kb = ((localStorage.getItem(STORAGE_KEY) || '').length / 1024).toFixed(1);
   const months = Object.keys(state.months).length;
+  const backedUp = readStamp(BACKUP_AT_KEY);
   html += `<section class="card"><div class="card-label">Datos</div>
-    <p>Todo se guarda en este dispositivo (${kb} KB, ${months} ${months === 1 ? 'mes' : 'meses'}). Nada sale del teléfono.</p>
-    <p class="hint">Haz una copia de vez en cuando: si borras la app de la pantalla de inicio, sus datos se borran con ella.</p>
-    <div class="actions col"><button class="secondary" data-action="export">Exportar copia (JSON)</button>
-    <button class="secondary" data-action="import">Importar copia…</button></div></section>
+    <p>Todo se guarda en este dispositivo (${kb} KB, ${months} ${months === 1 ? 'mes' : 'meses'}).</p>
+    <p class="hint">«Guardar copia» abre la hoja para compartir: puedes mandarla por WhatsApp o dejarla en Archivos, iCloud o Drive. Hazlo de vez en cuando. Si borras la app de la pantalla de inicio, sus datos se borran con ella.</p>
+    <p class="hint">${backedUp ? `Última copia: ${esc(fmtBackupDate(backedUp))}.` : 'Todavía no has guardado una copia desde este dispositivo.'}</p>
+    <div class="actions col"><button class="primary" data-action="export">Guardar copia</button>
+    <button class="secondary" data-action="import">Restaurar copia…</button></div></section>
     <section class="card"><div class="card-label">Versión</div>
     <p>Horario Espiritual · versión ${APP_VERSION}</p>
     <p class="hint">Al abrir la app con conexión se carga siempre la última versión. Si tienes dudas, fuérzalo aquí.</p>
@@ -547,25 +550,213 @@ function confirmSheet(msg, { ok = 'Aceptar', danger = false } = {}) {
 })();
 
 // ===== backup =====
+/* The reminder clock stays out of the state blob, like the theme: a copia is the horario, not
+   "when this phone last saved one". he.dataSince is the first day we saw real data (or an older
+   day inferred from checks and createdAt), so someone who already has months of history is
+   reminded now, and someone who just started is not reminded for 30 days. */
+const BACKUP_AT_KEY = 'he.backupAt';
+const BACKUP_SNOOZE_KEY = 'he.backupSnooze';
+const DATA_SINCE_KEY = 'he.dataSince';
+const BACKUP_REMIND_MS = 30 * DAY_MS;
+const FREQ_IDS = new Set(FREQS.map(f => f.id));
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_RE = /^\d{4}-\d{2}$/;
+const WEEK_RE = /^\d{4}-W\d{2}$/;
+
+function readStamp(key) {
+  try { const n = Number(localStorage.getItem(key)); return Number.isFinite(n) && n > 0 ? n : 0; }
+  catch (e) { return 0; }
+}
+function plainObject(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+/** Real horario content. The empty month snapshot created just by opening Hoy does not count. */
+function hasUserData(s = state) {
+  const t = s.template || {};
+  if (String(t.particular || '').trim()) return true;
+  if (Array.isArray(t.resolutions) && t.resolutions.length) return true;
+  if (s.settings && String(s.settings.name || '').trim()) return true;
+  if (s.scores && Object.keys(s.scores).length) return true;
+  if (s.checks) for (const days of Object.values(s.checks)) if (days && Object.keys(days).length) return true;
+  if (s.months) for (const m of Object.values(s.months)) {
+    if (!m) continue;
+    if (String(m.particular || '').trim()) return true;
+    if (Array.isArray(m.resolutions) && m.resolutions.length) return true;
+  }
+  return false;
+}
+function inferOldestDataTime() {
+  let oldest = '';
+  const limit = dayKey(today());
+  const consider = k => { if (typeof k === 'string' && DAY_RE.test(k) && k <= limit && (!oldest || k < oldest)) oldest = k; };
+  for (const r of (state.template && state.template.resolutions) || []) consider(r.createdAt);
+  for (const m of Object.values(state.months || {})) for (const r of (m && m.resolutions) || []) consider(r.createdAt);
+  for (const days of Object.values(state.checks || {})) {
+    if (!days || typeof days !== 'object') continue;
+    for (const k of Object.keys(days)) if (days[k]) consider(k);
+  }
+  for (const k of Object.keys(state.scores || {})) if (state.scores[k]) consider(k);
+  return oldest ? parseDay(oldest).getTime() : 0;
+}
+function noteDataSince() {
+  try {
+    if (!hasUserData()) { localStorage.removeItem(DATA_SINCE_KEY); return; }
+    if (readStamp(DATA_SINCE_KEY)) return;
+    localStorage.setItem(DATA_SINCE_KEY, String(inferOldestDataTime() || Date.now()));
+  } catch (e) { /* private mode */ }
+}
+function markBackup() {
+  try { localStorage.setItem(BACKUP_AT_KEY, String(Date.now())); localStorage.removeItem(BACKUP_SNOOZE_KEY); }
+  catch (e) { /* the copy itself still went out */ }
+}
+function snoozeBackupReminder() {
+  try { localStorage.setItem(BACKUP_SNOOZE_KEY, String(Date.now() + BACKUP_REMIND_MS)); } catch (e) {}
+}
+function reminderDue() {
+  if (!hasUserData()) return false;
+  if (readStamp(BACKUP_SNOOZE_KEY) > Date.now()) return false;
+  const at = readStamp(BACKUP_AT_KEY);
+  if (at) return Date.now() - at >= BACKUP_REMIND_MS;
+  const since = readStamp(DATA_SINCE_KEY);
+  return !!since && Date.now() - since >= BACKUP_REMIND_MS;
+}
+function fmtBackupDate(ts) {
+  const d = new Date(ts), y = d.getFullYear();
+  const base = `${d.getDate()} de ${MESES[d.getMonth()]}`;
+  return y === today().getFullYear() ? base : `${base} de ${y}`;
+}
+function backupBannerHtml() {
+  if (!reminderDue()) return '';
+  const at = readStamp(BACKUP_AT_KEY);
+  const msg = at
+    ? `La última copia es del ${esc(fmtBackupDate(at))}. Si borras la app, lo apuntado desde entonces puede perderse.`
+    : 'Hace más de un mes que no guardas una copia. Si borras la app de la pantalla de inicio, estos datos se pierden.';
+  return `<aside class="card banner"><p>${msg}</p><div class="banner-actions">
+      <button class="pill" data-action="export">Guardar copia</button>
+      <button class="textbtn" data-action="backup-dismiss">Ahora no</button>
+    </div></aside>`;
+}
+function validResolution(r) {
+  if (!plainObject(r)) return false;
+  if (typeof r.id !== 'string' || !r.id || r.id.length > 80) return false;
+  if (typeof r.text !== 'string' || r.text.length > 1000) return false;
+  if (!FREQ_IDS.has(r.freq)) return false;
+  if (r.order != null && (typeof r.order !== 'number' || !Number.isFinite(r.order))) return false;
+  if (r.createdAt != null && (typeof r.createdAt !== 'string' || !DAY_RE.test(r.createdAt))) return false;
+  return true;
+}
+/** Structural check before any confirm or write. Legacy v1 period keys are allowed; migrate() drops them. */
+function isBackup(s) {
+  if (!plainObject(s) || !plainObject(s.template) || !plainObject(s.months)) return false;
+  if (s.version != null && (!Number.isInteger(s.version) || s.version < 1 || s.version > 99)) return false;
+  const t = s.template;
+  if (t.particular != null && (typeof t.particular !== 'string' || t.particular.length > 1000)) return false;
+  if (t.resolutions != null && !Array.isArray(t.resolutions)) return false;
+  if (Array.isArray(t.resolutions) && (t.resolutions.length > 400 || !t.resolutions.every(validResolution))) return false;
+  const monthKeys = Object.keys(s.months);
+  if (monthKeys.length > 240) return false;
+  for (const mk of monthKeys) {
+    const m = s.months[mk];
+    if (!MONTH_RE.test(mk) || !plainObject(m)) return false;
+    if (m.particular != null && (typeof m.particular !== 'string' || m.particular.length > 1000)) return false;
+    if (m.resolutions != null && !Array.isArray(m.resolutions)) return false;
+    if (Array.isArray(m.resolutions) && (m.resolutions.length > 400 || !m.resolutions.every(validResolution))) return false;
+  }
+  if (s.checks != null && !plainObject(s.checks)) return false;
+  if (s.checks) {
+    let n = 0;
+    for (const days of Object.values(s.checks)) {
+      if (!plainObject(days)) return false;
+      for (const [k, v] of Object.entries(days)) {
+        if (v !== true || !(DAY_RE.test(k) || WEEK_RE.test(k) || MONTH_RE.test(k))) return false;
+        if (++n > 100000) return false;
+      }
+    }
+  }
+  if (s.scores != null && !plainObject(s.scores)) return false;
+  if (s.scores) {
+    const scores = Object.entries(s.scores);
+    if (scores.length > 20000) return false;
+    for (const [k, v] of scores) if (!DAY_RE.test(k) || !Number.isInteger(v) || v < 1 || v > 5) return false;
+  }
+  if (s.settings != null && !plainObject(s.settings)) return false;
+  if (s.settings && s.settings.name != null && (typeof s.settings.name !== 'string' || s.settings.name.length > 200)) return false;
+  return true;
+}
+/** File the share sheet will actually take. WebKit (iPhone) accepts the .json. Chromium's canShare()
+ *  returns true and then share() throws for application/json — it isn't on the allowlist — so on
+ *  Android the same JSON goes out as .txt, which the sheet does accept. The download fallback keeps
+ *  the .json name. Restore reads either; it checks the contents, not the extension. */
+function backupShareFile(body, jsonName) {
+  if (!navigator.canShare) return null;
+  const json = new File([body], jsonName, { type: 'application/json' });
+  const text = new File([body], jsonName.replace(/\.json$/i, '.txt'), { type: 'text/plain' });
+  const androidChrome = /Android/.test(navigator.userAgent) && /Chrome|Chromium/.test(navigator.userAgent);
+  const candidates = androidChrome ? [text, json] : [json, text];
+  return candidates.find(file => { try { return navigator.canShare({ files: [file] }); } catch (e) { return false; } }) || null;
+}
+function downloadBackup(body, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+function finishBackup(message) {
+  markBackup();
+  render();
+  toast(message);
+}
+/** Phones and iPads get the system sheet. Desktop always downloads: Chrome there says it can share a
+ *  JSON file and then rejects it, and a download is the reliable one-tap path at a computer. */
+function isHandheld() {
+  const ua = navigator.userAgent || '';
+  if (/Android|iPhone|iPad|iPod/.test(ua)) return true;
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+}
 async function exportBackup() {
   const name = `horario-espiritual-${dayKey(today())}.json`;
-  const file = new File([JSON.stringify(state, null, 2)], name, { type: 'application/json' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'Copia de Horario Espiritual' }); return; }
-    catch (e) { if (e.name === 'AbortError') return; }
+  const body = JSON.stringify(state, null, 2);
+  const file = isHandheld() ? backupShareFile(body, name) : null;
+  if (file) {
+    try {
+      await navigator.share({ files: [file], title: 'Copia de Horario Espiritual' });
+      finishBackup('Copia lista.');
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      if (e && e.name === 'NotAllowedError') { toast('Toca de nuevo para compartir la copia.'); return; }
+    }
   }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  downloadBackup(body, name);
+  finishBackup('Copia descargada.');
 }
 function importBackup(file) {
+  if (!file) return;
   const rd = new FileReader();
+  rd.onerror = () => toast('No se pudo leer el archivo.');
   rd.onload = async () => {
+    const text = String(rd.result || '').replace(/^\uFEFF/, '').trim();
+    if (text.length > 4000000) { toast('El archivo es demasiado grande.'); return; }
     let s;
-    try { s = JSON.parse(rd.result); if (!s || typeof s !== 'object' || !s.template || !s.months) throw new Error('formato'); }
+    try { s = JSON.parse(text); }
     catch (e) { toast('El archivo no es una copia válida.'); return; }
+    if (!isBackup(s)) { toast('El archivo no es una copia válida.'); return; }
     const n = Object.keys(s.months).length;
-    if (!(await confirmSheet(`Importar reemplazará todos los datos actuales por la copia (${n} ${n === 1 ? 'mes' : 'meses'}). ¿Continuar?`, { ok: 'Importar' }))) return;
-    state = migrate(s); save(); ui.anim = 'fade'; render(); toast('Copia importada.');
+    const ok = await confirmSheet(
+      `Restaurar reemplazará todos los datos actuales por la copia (${n} ${n === 1 ? 'mes' : 'meses'}). ¿Continuar?`,
+      { ok: 'Restaurar' });
+    if (!ok) return;
+    let next;
+    try { next = migrate(JSON.parse(JSON.stringify(s))); }
+    catch (e) { toast('El archivo no es una copia válida.'); return; }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); }
+    catch (e) { console.error('restore failed', e); toast('No se pudo restaurar. ¿Almacenamiento lleno?'); return; }
+    state = next;
+    markBackup();
+    noteDataSince();
+    ui.editing = null;
+    ui.anim = 'fade';
+    render();
+    toast('Copia restaurada.');
   };
   rd.readAsText(file);
 }
@@ -598,6 +789,7 @@ $('#view').addEventListener('click', e => {
     case 'theme': setTheme(el.dataset.theme); break;
     case 'pdf': exportPdf(); return;
     case 'export': exportBackup(); return;
+    case 'backup-dismiss': snoozeBackupReminder(); break;
     case 'update': checkForUpdates(); return;
     case 'import': $('#file-import').click(); return;
     default: return;
@@ -645,6 +837,7 @@ document.addEventListener('visibilitychange', () => {
 // ===== boot =====
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 applyTheme();
+noteDataSince();
 render();
 // Service worker: offline shell. Files are network-first, so a fresh launch already shows the latest
 // deploy; the toast only appears if the SW that just activated is newer than the page that is running.
