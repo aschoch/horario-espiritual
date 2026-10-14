@@ -654,8 +654,8 @@ function backupBannerHtml() {
   if (!reminderDue()) return '';
   const at = readStamp(BACKUP_AT_KEY);
   const msg = at
-    ? `La última copia es del ${esc(fmtBackupDate(at))}. Si borras la app, lo apuntado desde entonces puede perderse.`
-    : 'Hace más de un mes que no guardas una copia. Si borras la app de la pantalla de inicio, estos datos se pierden.';
+    ? `Última copia: ${esc(fmtBackupDate(at))}.`
+    : 'Hace más de un mes sin copia.';
   return `<aside class="card banner"><p>${msg}</p><div class="banner-actions">
       <button class="pill" data-action="export">Guardar copia</button>
       <button class="textbtn" data-action="backup-dismiss">Ahora no</button>
