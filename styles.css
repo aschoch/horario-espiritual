@@ -182,6 +182,28 @@ table.grid tr.group td { border-bottom: 1px solid var(--line); }
 table.grid .wk { border-left: 1px solid var(--line); }
 table.grid tr.weeksrow th { font-size: 11px; color: var(--muted); height: 18px; }
 
+/* Portrait month: one week, name above a row of day targets. */
+.weeknav { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 8px; }
+.weeknav-title { font-size: 16px; font-weight: 600; }
+.weekcard { padding: 12px 12px 14px; }
+.whead, .wcells { display: grid; gap: 4px; }
+.whead > span { text-align: center; }
+.whead .let { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.whead .num { display: block; font-size: 13px; font-weight: 700; }
+.whead .today .num, .whead .today .let { color: var(--accent); }
+.wgroup { margin: 16px 2px 0; font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.wname { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 10px 2px 6px; font-size: 16px; }
+.wname span:first-child { min-width: 0; }
+.wname .tot { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; flex: none; }
+.wcell { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--muted); font-size: 18px; font-weight: 700; padding: 0; }
+.wcell.we:not(.on) { background: var(--we); }
+.wcell.on { background: var(--on); color: var(--on-success); border-color: var(--on); }
+.wcell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.wcell.future { background: transparent; border-color: transparent; box-shadow: none; }
+.wcell.s1 { color: var(--s1); } .wcell.s2 { color: var(--s2); } .wcell.s3 { color: var(--s3); }
+.wcell.s4 { color: var(--s4); } .wcell.s5 { color: var(--s5); }
+
 /* ---- bottom sheet (confirmations) ---- */
 .sheet { position: fixed; inset: 0; z-index: 20; }
 .sheet-backdrop { position: absolute; inset: 0; background: var(--scrim); opacity: 0; transition: opacity .25s var(--ease-out); }
@@ -220,5 +242,5 @@ table.grid tr.weeksrow th { font-size: 11px; color: var(--muted); height: 18px; 
   .row.pop .box { animation: pop .22s var(--ease-out); }
   .row.pop.done .box::after { animation: drawCheck .18s var(--ease-out) both; }
   .score.pop { animation: pop .2s var(--ease-out); }
-  table.grid td.pop { animation: cellFlash .22s var(--ease-out); }
+  table.grid td.pop, .wcell.pop { animation: cellFlash .22s var(--ease-out); }
 }

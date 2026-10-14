@@ -213,7 +213,7 @@ function upToDate(r, d) {
 }
 // ===== rendering =====
 const ui = { tab: 'hoy', day: today(), month: { y: today().getFullYear(), m0: today().getMonth() }, editing: null,
-  rotated: false, anim: 'fade' };
+  rotated: false, week: null, anim: 'fade' };
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtAvg = n => n.toFixed(1).replace('.', ',');
@@ -280,6 +280,95 @@ function monthModel(y, m0) {
   return { mk, isCurrent, m, res, nDays, days, lastDay, weeks, elapsed, groups, scores, avg, countOf, weeksDone };
 }
 
+/** Which week of the open month is on screen. Null means "the week that contains today". */
+function weekIndex(weeks, isCurrent) {
+  if (ui.week == null || ui.week < 0 || ui.week >= weeks.length) {
+    if (!isCurrent) ui.week = 0;
+    else {
+      const t = today();
+      const i = weeks.findIndex(w => t >= w.start && t <= w.end);
+      ui.week = i >= 0 ? i : Math.max(0, weeks.length - 1);
+    }
+  }
+  return ui.week;
+}
+/** Portrait month: one week, seven tappable days. The full month stays on Girar and on the PDF. */
+function renderWeek(M) {
+  const { y, m0, mk, isCurrent, m, lastDay, weeks, elapsed, groups, scores, avg } = M;
+  const idx = weekIndex(weeks, isCurrent), w = weeks[idx];
+  const days = range(w.start.getDate(), w.end.getDate());
+  const cols = `style="grid-template-columns:repeat(${days.length},minmax(0,1fr))"`;
+  const dateOf = d => new Date(y, m0, d);
+  let html = '';
+  if (m.particular) {
+    html += `<section class="card"><div class="card-label">Examen particular</div>
+      <div class="particular-text">${esc(m.particular)}</div>
+      <div class="stat">${avg ? `Media <b>${fmtAvg(avg)}</b> · ${scores.length} ${scores.length === 1 ? 'día puntuado' : 'días puntuados'}` : 'Sin puntuaciones todavía'}</div></section>`;
+  }
+  html += `<div class="weeknav">
+    <button class="icon" data-action="week:prev" ${idx === 0 ? 'disabled' : ''} aria-label="Semana anterior">&#8249;</button>
+    <div class="weeknav-title">${esc(w.label)}</div>
+    <button class="icon" data-action="week:next" ${idx === weeks.length - 1 ? 'disabled' : ''} aria-label="Semana siguiente">&#8250;</button>
+  </div><section class="card weekcard"><div class="whead" ${cols}>` + days.map(d => {
+    const dt = dateOf(d);
+    const cls = [weekdayIndex(dt) >= 5 ? 'we' : '', isCurrent && d === lastDay ? 'today' : ''].filter(Boolean).join(' ');
+    return `<span class="${cls}"><span class="let">${DIAS_L[weekdayIndex(dt)]}</span><span class="num">${d}</span></span>`;
+  }).join('') + `</div>`;
+  if (m.particular) {
+    html += `<div class="wname"><span>Examen</span><span class="tot">${avg ? fmtAvg(avg) : '–'}</span></div><div class="wcells" ${cols}>` +
+      days.map(d => {
+        const future = d > lastDay, sc = future ? null : getScore(`${mk}-${pad2(d)}`);
+        const cls = [future ? 'future' : '', sc ? 's' + sc : '', isCurrent && d === lastDay ? 'today' : ''].filter(Boolean).join(' ');
+        return `<span class="wcell score ${cls}">${future ? '' : (sc || '·')}</span>`;
+      }).join('') + `</div>`;
+  }
+  for (const g of groups) {
+    html += `<div class="wgroup">${g.title}</div>`;
+    for (const r of g.items) {
+      const n = M.countOf(r);
+      const total = g.id === 'daily' ? `${n}/${lastDay}` : g.id === 'weekly' ? `${M.weeksDone(r)}/${elapsed.length}` : (n ? '✓' : '–');
+      html += `<div class="wname"><span>${esc(r.text)}</span><span class="tot">${total}</span></div><div class="wcells" ${cols}>` +
+        days.map(d => {
+          const future = d > lastDay, dt = dateOf(d);
+          const cls = [weekdayIndex(dt) >= 5 ? 'we' : '', isCurrent && d === lastDay ? 'today' : '', future ? 'future' : ''].filter(Boolean).join(' ');
+          if (future) return `<span class="wcell ${cls}"></span>`;
+          const k = `${mk}-${pad2(d)}`, on = isChecked(r.id, k);
+          return `<button class="wcell ${cls} ${on ? 'on' : ''}" data-action="check" data-id="${r.id}" data-key="${k}" aria-pressed="${on}" aria-label="${esc(r.text)}, ${d} de ${MESES[m0]}">${on ? '✓' : ''}</button>`;
+        }).join('') + `</div>`;
+    }
+  }
+  return html + `</section>`;
+}
+function renderMonthGrid(M) {
+  const { y, m0 } = ui.month;
+  const { mk, isCurrent, m, nDays, days, lastDay, weeks, elapsed, groups, avg } = M;
+  const dateOf = d => new Date(y, m0, d);
+  const cls = d => [weekdayIndex(dateOf(d)) >= 5 ? 'we' : '', isCurrent && d === lastDay ? 'today' : '',
+    d > 1 && weekdayIndex(dateOf(d)) === 0 ? 'wk' : ''].filter(Boolean).join(' ');
+  let html = `<section class="card grid-card"><div class="gridwrap"><table class="grid"><colgroup><col class="c-lab">${days.map(() => '<col>').join('')}<col class="c-tot"></colgroup><thead>
+    <tr class="weeksrow"><th class="lab"></th>${weeks.map(w => `<th colspan="${w.end.getDate() - w.start.getDate() + 1}" class="${w.start.getDate() > 1 ? 'wk' : ''}">${w.label}</th>`).join('')}<th class="tot"></th></tr>
+    <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
+    <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
+  if (m.particular) {
+    html += `<tr class="examen"><th class="lab" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
+      const sc = getScore(`${mk}-${pad2(d)}`);
+      return `<td class="${cls(d)} ${sc ? 's' + sc : ''}">${d <= lastDay ? (sc || '·') : ''}</td>`;
+    }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
+  }
+  for (const g of groups) {
+    html += `<tr class="group"><th class="lab">${g.title}</th><td colspan="${nDays}"></td><td class="tot"></td></tr>`;
+    for (const r of g.items) {
+      const n = M.countOf(r);
+      const cells = days.map(d => {
+        const k = `${mk}-${pad2(d)}`, on = isChecked(r.id, k), future = d > lastDay;
+        return `<td class="${cls(d)} ${on ? 'on' : ''} ${future ? 'future' : ''}" ${future ? '' : `data-action="check" data-id="${r.id}" data-key="${k}"`}>${on ? '✓' : (future ? '' : '·')}</td>`;
+      }).join('');
+      const total = g.id === 'daily' ? `${n}/${lastDay}` : g.id === 'weekly' ? `${M.weeksDone(r)}/${elapsed.length}` : (n ? '✓' : '–');
+      html += `<tr><th class="lab" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
+    }
+  }
+  return html + `</tbody></table></div></section>`;
+}
 function renderMes() {
   const { y, m0 } = ui.month;
   const M = monthModel(y, m0), { mk, isCurrent, m } = M;
@@ -291,42 +380,10 @@ function renderMes() {
     <button class="icon" data-action="month:next" ${isCurrent ? 'disabled' : ''} aria-label="Mes siguiente">&#8250;</button>
   </div>`;
   if (!m) return head + slide(emptyCard('Sin horario este mes', 'No hay puntos registrados para este mes.'));
-  const { res, nDays, days, lastDay, weeks, elapsed, groups, scores, avg } = M;
+  const { res } = M;
   if (!res.length && !m.particular) return head + slide(emptyCard('Sin puntos', 'Este mes no tiene puntos registrados.', isCurrent ? 'config' : null));
-  const dateOf = d => new Date(y, m0, d);
-  const cls = d => [weekdayIndex(dateOf(d)) >= 5 ? 'we' : '', isCurrent && d === lastDay ? 'today' : '',
-    d > 1 && weekdayIndex(dateOf(d)) === 0 ? 'wk' : ''].filter(Boolean).join(' ');
-
-  let body = '';
-  if (m.particular) {
-    body += `<section class="card hide-rotated"><div class="card-label">Examen particular</div>
-      <div class="particular-text">${esc(m.particular)}</div>
-      <div class="stat">${avg ? `Media <b>${fmtAvg(avg)}</b> · ${scores.length} ${scores.length === 1 ? 'día puntuado' : 'días puntuados'}` : 'Sin puntuaciones todavía'}</div></section>`;
-  }
-  body += `<section class="card grid-card"><div class="gridwrap"><table class="grid"><colgroup><col class="c-lab">${days.map(() => '<col>').join('')}<col class="c-tot"></colgroup><thead>
-    <tr class="weeksrow"><th class="lab"></th>${weeks.map(w => `<th colspan="${w.end.getDate() - w.start.getDate() + 1}" class="${w.start.getDate() > 1 ? 'wk' : ''}">${w.label}</th>`).join('')}<th class="tot"></th></tr>
-    <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
-    <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
-  if (m.particular) {
-    body += `<tr class="examen"><th class="lab" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
-      const sc = getScore(`${mk}-${pad2(d)}`);
-      return `<td class="${cls(d)} ${sc ? 's' + sc : ''}">${d <= lastDay ? (sc || '·') : ''}</td>`;
-    }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
-  }
-  for (const g of groups) {
-    body += `<tr class="group"><th class="lab">${g.title}</th><td colspan="${nDays}"></td><td class="tot"></td></tr>`;
-    for (const r of g.items) {
-      const n = M.countOf(r);
-      const cells = days.map(d => {
-        const k = `${mk}-${pad2(d)}`, on = isChecked(r.id, k), future = d > lastDay;
-        return `<td class="${cls(d)} ${on ? 'on' : ''} ${future ? 'future' : ''}" ${future ? '' : `data-action="check" data-id="${r.id}" data-key="${k}"`}>${on ? '✓' : (future ? '' : '·')}</td>`;
-      }).join('');
-      const total = g.id === 'daily' ? `${n}/${lastDay}` : g.id === 'weekly' ? `${M.weeksDone(r)}/${elapsed.length}` : (n ? '✓' : '–');
-      body += `<tr><th class="lab" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
-    }
-  }
-  body += `</tbody></table></div></section>`;
-  body += `<div class="actions"><button class="primary" data-action="pdf">Exportar PDF</button></div>`;
+  const body = (ui.rotated ? renderMonthGrid(M) : renderWeek(M)) +
+    `<div class="actions"><button class="primary" data-action="pdf">Exportar PDF</button></div>`;
   return head + slide(body);
 }
 
@@ -808,8 +865,10 @@ $('#view').addEventListener('click', e => {
     case 'day:prev': ui.day = addDays(ui.day, -1); ui.anim = 'right'; break;
     case 'day:next': if (ui.day < today()) { ui.day = addDays(ui.day, 1); ui.anim = 'left'; } break;
     case 'day:today': ui.day = today(); ui.anim = 'left'; break;
-    case 'month:prev': { const d = new Date(ui.month.y, ui.month.m0 - 1, 1); ui.month = { y: d.getFullYear(), m0: d.getMonth() }; ui.anim = 'right'; break; }
-    case 'month:next': { const d = new Date(ui.month.y, ui.month.m0 + 1, 1); if (d <= today()) { ui.month = { y: d.getFullYear(), m0: d.getMonth() }; ui.anim = 'left'; } break; }
+    case 'month:prev': { const d = new Date(ui.month.y, ui.month.m0 - 1, 1); ui.month = { y: d.getFullYear(), m0: d.getMonth() }; ui.week = null; ui.anim = 'right'; break; }
+    case 'month:next': { const d = new Date(ui.month.y, ui.month.m0 + 1, 1); if (d <= today()) { ui.month = { y: d.getFullYear(), m0: d.getMonth() }; ui.week = null; ui.anim = 'left'; } break; }
+    case 'week:prev': { const w = weeksOfMonth(ui.month.y, ui.month.m0); if (ui.week > 0) { ui.week--; ui.anim = 'right'; } else if (ui.week == null && w.length) ui.week = 0; break; }
+    case 'week:next': { const w = weeksOfMonth(ui.month.y, ui.month.m0); const i = ui.week == null ? 0 : ui.week; if (i < w.length - 1) { ui.week = i + 1; ui.anim = 'left'; } break; }
     case 'rotate': ui.rotated = !ui.rotated; ui.anim = 'fade'; $('#view').scrollTop = 0; break;
     case 'check': toggleCheck(id, key); renderAndPop(`[data-action="check"][data-id="${id}"][data-key="${key}"]`); return;
     case 'score': { const v = +el.dataset.v, dk = dayKey(ui.day); setScore(dk, getScore(dk) === v ? null : v); renderAndPop(`[data-action="score"][data-v="${v}"]`); return; }
