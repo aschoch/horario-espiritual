@@ -10,7 +10,7 @@ const STORAGE_KEY = 'he.v1';
 const THEME_KEY = 'he.theme';
 const THEMES = [{ id: 'auto', label: 'Automático' }, { id: 'light', label: 'Claro' }, { id: 'dark', label: 'Oscuro' }];
 const DEFAULT_THEME = 'dark'; // he fills the horario at night
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.10.0';
 const DAY_ROLLOVER_HOUR = 6; // the "day" changes at 06:00, not at midnight (night-time filling)
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
