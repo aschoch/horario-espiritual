@@ -350,7 +350,7 @@ function renderMonthGrid(M) {
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${DIAS_L[weekdayIndex(dateOf(d))]}</th>`).join('')}<th class="tot"></th></tr>
     <tr><th class="lab"></th>${days.map(d => `<th class="${cls(d)}">${d}</th>`).join('')}<th class="tot">Total</th></tr></thead><tbody>`;
   if (m.particular) {
-    html += `<tr class="examen"><th class="lab" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
+    html += `<tr class="examen"><th class="lab" data-action="fullname" title="${esc(m.particular)}">Examen particular</th>` + days.map(d => {
       const sc = getScore(`${mk}-${pad2(d)}`);
       return `<td class="${cls(d)} ${sc ? 's' + sc : ''}">${d <= lastDay ? (sc || '·') : ''}</td>`;
     }).join('') + `<td class="tot">${avg ? fmtAvg(avg) : '–'}</td></tr>`;
@@ -364,7 +364,7 @@ function renderMonthGrid(M) {
         return `<td class="${cls(d)} ${on ? 'on' : ''} ${future ? 'future' : ''}" ${future ? '' : `data-action="check" data-id="${r.id}" data-key="${k}"`}>${on ? '✓' : (future ? '' : '·')}</td>`;
       }).join('');
       const total = g.id === 'daily' ? `${n}/${lastDay}` : g.id === 'weekly' ? `${M.weeksDone(r)}/${elapsed.length}` : (n ? '✓' : '–');
-      html += `<tr><th class="lab" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
+      html += `<tr><th class="lab" data-action="fullname" title="${esc(r.text)}">${esc(r.text)}</th>${cells}<td class="tot">${total}</td></tr>`;
     }
   }
   return html + `</tbody></table></div></section>`;
@@ -870,6 +870,7 @@ $('#view').addEventListener('click', e => {
     case 'week:prev': { const w = weeksOfMonth(ui.month.y, ui.month.m0); if (ui.week > 0) { ui.week--; ui.anim = 'right'; } else if (ui.week == null && w.length) ui.week = 0; break; }
     case 'week:next': { const w = weeksOfMonth(ui.month.y, ui.month.m0); const i = ui.week == null ? 0 : ui.week; if (i < w.length - 1) { ui.week = i + 1; ui.anim = 'left'; } break; }
     case 'rotate': ui.rotated = !ui.rotated; ui.anim = 'fade'; $('#view').scrollTop = 0; break;
+    case 'fullname': { const t = el.getAttribute('title'); if (t) toast(t); return; }
     case 'check': toggleCheck(id, key); renderAndPop(`[data-action="check"][data-id="${id}"][data-key="${key}"]`); return;
     case 'score': { const v = +el.dataset.v, dk = dayKey(ui.day); setScore(dk, getScore(dk) === v ? null : v); renderAndPop(`[data-action="score"][data-v="${v}"]`); return; }
     case 'edit': ui.editing = id; break;

@@ -54,10 +54,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .app.rotated { position: fixed; top: 0; left: 0; margin: 0; max-width: none; width: 100dvh; height: 100dvw;
   transform: translateX(100dvw) rotate(90deg); transform-origin: left top;
   padding-left: env(safe-area-inset-top); padding-right: env(safe-area-inset-bottom); }
-.app.rotated .topbar { display: none; }
-.app.rotated .tabbar { padding-bottom: 4px; }
-.app.rotated .tabbar button { padding: 6px 0 6px; }
-.app.rotated .tabbar button::before { margin-bottom: 4px; }
+.app.rotated .topbar, .app.rotated .tabbar { display: none; }
 .app.rotated main { padding: 0 12px 12px; }
 .app.rotated .daynav { margin: 2px 0 4px; }
 .app.rotated .daynav .big { font-size: 17px; }
@@ -68,12 +65,14 @@ main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: tou
 .daynav .sub b { font-weight: 500; color: var(--text); }
 .app.rotated .gridwrap { overflow: visible; }
 .app.rotated table.grid { width: 100%; table-layout: fixed; font-size: 11px; }
-.app.rotated table.grid col.c-lab { width: 150px; }
+.app.rotated table.grid col.c-lab { width: 168px; }
 .app.rotated table.grid col.c-tot { width: 44px; }
 .app.rotated table.grid th, .app.rotated table.grid td { height: 26px; min-width: 0; }
 /* the table fits the screen here, and sticky misbehaves inside the transformed frame in WebKit */
 .app.rotated table.grid th.lab, .app.rotated table.grid .tot { position: static; width: auto; min-width: 0; max-width: none; }
-.app.rotated table.grid th.lab { padding-left: 8px; font-size: 12px; }
+.app.rotated table.grid th.lab { padding-left: 8px; font-size: 11px; white-space: normal; overflow: visible;
+  text-overflow: clip; height: auto; line-height: 1.25; }
+.app.rotated table.grid th.lab[data-action] { cursor: pointer; }
 .app.rotated table.grid .tot { padding: 0 4px; font-size: 11px; }
 .app.rotated table.grid thead th { height: 16px; }
 .app.rotated table.grid thead tr:last-child th { height: 20px; font-size: 11px; }
