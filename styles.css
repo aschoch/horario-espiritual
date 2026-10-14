@@ -205,7 +205,8 @@ table.grid tr.weeksrow th { font-size: 11px; color: var(--muted); height: 18px; 
 .wcell.we:not(.on) { background: var(--we); }
 .wcell.on { background: var(--on); color: var(--on-success); border-color: var(--on); }
 .wcell.today { box-shadow: inset 0 0 0 2px var(--accent); }
-.wcell.future { background: transparent; border-color: transparent; box-shadow: none; }
+/* A future day is still a cell: empty, not tappable. Hiding it made Thu/Fri vanish while the weekend fill stayed. */
+.wcell.future { box-shadow: none; }
 .wcell.s1 { color: var(--s1); } .wcell.s2 { color: var(--s2); } .wcell.s3 { color: var(--s3); }
 .wcell.s4 { color: var(--s4); } .wcell.s5 { color: var(--s5); }
 
