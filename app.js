@@ -284,7 +284,7 @@ function renderMes() {
     <button class="icon" data-action="month:prev" aria-label="Mes anterior">&#8249;</button>
     <div class="daynav-title"><div class="big">${cap(MESES[m0])} ${y}</div>
       ${m && m.particular ? `<div class="sub show-rotated">Examen particular: <b>${esc(m.particular)}</b></div>` : ''}
-      <button class="pill" data-action="rotate">${ui.rotated ? 'Volver a vertical' : 'Girar para ver el mes entero'}</button></div>
+      <button class="pill" data-action="rotate" title="${ui.rotated ? 'Volver a vertical' : 'Ver el mes entero girado'}">${ui.rotated ? 'Volver' : 'Girar'}</button></div>
     <button class="icon" data-action="month:next" ${isCurrent ? 'disabled' : ''} aria-label="Mes siguiente">&#8250;</button>
   </div>`;
   if (!m) return html + emptyCard('Sin horario este mes', 'No hay puntos registrados para este mes.');
@@ -492,8 +492,20 @@ function render() {
   view.className = ui.anim ? `anim-${ui.anim}` : '';
   ui.anim = null;
   view.innerHTML = ({ hoy: renderHoy, mes: renderMes, config: renderConfig })[ui.tab]();
+  markScrollHints();
   if (ui.tab === 'mes' && navigator.onLine !== false) loadJsPdf().catch(() => {});
   if (ui.editing) { const inp = $('.edit-input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+}
+/** Fade the grid's right edge while more days sit past the sticky total. */
+function markScrollHints() {
+  document.querySelectorAll('.gridwrap').forEach(el => {
+    const update = () => {
+      const more = el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+      el.classList.toggle('can-scroll', more);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+  });
 }
 /** Re-render and briefly animate the element matching `sel` (the thing the user just touched). */
 function renderAndPop(sel) {

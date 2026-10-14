@@ -152,7 +152,9 @@ textarea, input.field { width: 100%; border: 1px solid var(--line); border-radiu
 textarea { resize: vertical; }
 
 .grid-card { padding-right: 0; padding-left: 0; }
-.gridwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0 0 4px; }
+.gridwrap { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0 0 4px; }
+.gridwrap.can-scroll::after { content: ''; position: absolute; top: 0; bottom: 0; right: 56px; width: 24px;
+  background: linear-gradient(to right, transparent, var(--card)); pointer-events: none; z-index: 2; }
 table.grid { border-collapse: separate; border-spacing: 0; font-size: 13px; }
 table.grid th, table.grid td { padding: 0; text-align: center; height: 32px; min-width: 30px;
   border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; overflow: hidden; }
